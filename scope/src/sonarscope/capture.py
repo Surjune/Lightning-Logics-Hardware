@@ -83,14 +83,12 @@ class Capture:
 
 # ---- native format ----------------------------------------------------------------------
 def save_npz(path: str | Path, captures: Capture | list[Capture]) -> None:
-    """Save one capture or a list of segments."""
+    """Save one capture or a list of segments (segments may differ in length)."""
     segs = captures if isinstance(captures, list) else [captures]
     if not segs:
         raise ValueError("nothing to save")
     names = segs[0].names
-    arrays = {}
-    for name in names:
-        arrays[f"ch_{name}"] = np.stack([s.ch(name) for s in segs])
+    arrays = {f"s{i}_{name}": s.ch(name) for i, s in enumerate(segs) for name in names}
     header = {
         "dt": segs[0].dt,
         "t0": [s.t0 for s in segs],
@@ -105,11 +103,10 @@ def save_npz(path: str | Path, captures: Capture | list[Capture]) -> None:
 def load_npz(path: str | Path) -> Capture | list[Capture]:
     with np.load(path, allow_pickle=False) as z:
         header = json.loads(str(z["header"]))
-        data = {name: z[f"ch_{name}"] for name in header["names"]}
-    segs = []
-    for i, (t0, ts) in enumerate(zip(header["t0"], header["timestamps"])):
-        segs.append(Capture(header["dt"], {k: v[i] for k, v in data.items()}, t0,
-                            dict(header["meta"]), ts))
+        segs = []
+        for i, (t0, ts) in enumerate(zip(header["t0"], header["timestamps"])):
+            chans = {name: z[f"s{i}_{name}"] for name in header["names"]}
+            segs.append(Capture(header["dt"], chans, t0, dict(header["meta"]), ts))
     return segs if header["segmented"] else segs[0]
 
 
