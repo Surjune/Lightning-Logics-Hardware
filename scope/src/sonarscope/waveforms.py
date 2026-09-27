@@ -188,6 +188,14 @@ def envelope(spec: PulseSpec, fs: float) -> np.ndarray:
     return spec.amplitude * window(spec.window, n, spec.tukey_alpha)
 
 
+def amplitude_envelope(spec: PulseSpec, fs: float) -> np.ndarray:
+    """Expected |envelope| of the pulse: the window, plus the code dips for shaped Barker."""
+    env = envelope(spec, fs)
+    if spec.kind == "barker13":
+        env = env * np.abs(barker_code(spec, _time_axis(spec, fs), fs))
+    return env
+
+
 def synthesize(spec: PulseSpec, fs: float, rx_weight: str | None = None) -> np.ndarray:
     """Ideal (unquantised) pulse in [-1, 1] sampled at ``fs``.
 
@@ -236,7 +244,7 @@ def preset(name: str) -> PulseSpec:
         "lfm_down": PulseSpec("lfm", 500e3, 400e3, 2e-3, "tukey", label="LFM 500-400 kHz down-chirp"),
         "lfm_full": PulseSpec("lfm", 100e3, 500e3, 2e-3, "tukey", label="LFM 100-500 kHz full band"),
         "geometric": PulseSpec("geometric", 100e3, 500e3, 2e-3, "tukey", label="Geometric 100-500 kHz"),
-        "barker13": PulseSpec("barker13", 300e3, 300e3, 13 * 40e-6, "tukey", tukey_alpha=0.05,
+        "barker13": PulseSpec("barker13", 300e3, 300e3, 13 * 40e-6, "tukey", tukey_alpha=0.12,
                               chip=40e-6, rc_shaping=0.2, label="Barker-13 on 300 kHz"),
         "tone_101k": PulseSpec("cw", 101.3e3, 101.3e3, 5e-3, "tukey", tukey_alpha=0.1, label="CW 101.3 kHz"),
         "tone_250k": PulseSpec("cw", 250e3, 250e3, 5e-3, "tukey", tukey_alpha=0.1, label="CW 250 kHz"),
