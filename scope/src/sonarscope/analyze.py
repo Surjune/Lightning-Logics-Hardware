@@ -31,6 +31,7 @@ def metrics_for(test: TestCase, data: Capture | list[Capture], context: dict | N
         out.update(M.spur_metrics(cap, test.spec))
         out.update({k: v for k, v in M.envelope_metrics(cap, test.spec).items()
                     if k in ("edge_step_pct", "idle_dc_v", "peak_v", "correlation")})
+        out.update(M.clipping_metrics(cap))
         return out
     if test.kind == "pulse":
         cap = _single(data)
@@ -39,6 +40,7 @@ def metrics_for(test: TestCase, data: Capture | list[Capture], context: dict | N
         out.update(M.frequency_metrics(cap, test.spec))
         out.update(M.spur_metrics(cap, test.spec))
         out.update(M.compression_metrics(cap, test.spec, rx_weight=test.rx_weight))
+        out.update(M.clipping_metrics(cap))
         return out
     if test.kind == "pri":
         return M.pri_metrics(_single(data), test.spec)

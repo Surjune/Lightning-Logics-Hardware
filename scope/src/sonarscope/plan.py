@@ -63,18 +63,19 @@ class TestCase:
 
 def _pulse(name, criteria, **kw) -> TestCase:
     spec = wf.preset(name)
-    return TestCase(name, "pulse", spec, criteria=criteria, description=spec.label, **kw)
+    return TestCase(name, "pulse", spec, criteria=th.SANITY + criteria, description=spec.label, **kw)
 
 
 def default_plan() -> list[TestCase]:
     E, S = th.EDGE, th.SWEEP
+    TONE = th.SANITY + th.TONE
     return [
         TestCase("floor", "floor", criteria=th.FLOOR, description="Instrument noise and spur floor"),
         TestCase("idle", "idle", criteria=th.IDLE, description="Idle DC offset at the output"),
-        TestCase("tone_101k", "tone", wf.preset("tone_101k"), criteria=th.TONE, description="CW 101.3 kHz"),
-        TestCase("tone_250k", "tone", wf.preset("tone_250k"), criteria=th.TONE, description="CW 250 kHz"),
-        TestCase("tone_487k", "tone", wf.preset("tone_487k"), criteria=th.TONE, description="CW 487.3 kHz"),
-        TestCase("tone_500k", "tone", wf.preset("tone_500k"), criteria=th.TONE, informational=True,
+        TestCase("tone_101k", "tone", wf.preset("tone_101k"), criteria=TONE, description="CW 101.3 kHz"),
+        TestCase("tone_250k", "tone", wf.preset("tone_250k"), criteria=TONE, description="CW 250 kHz"),
+        TestCase("tone_487k", "tone", wf.preset("tone_487k"), criteria=TONE, description="CW 487.3 kHz"),
+        TestCase("tone_500k", "tone", wf.preset("tone_500k"), criteria=TONE, informational=True,
                  description="CW 500 kHz: first image lands on H3 (demonstration)"),
         _pulse("lfm_lo", E + S + th.IMAGES_LO + th.PSL_WEIGHTED),
         _pulse("lfm_hi", E + S + th.IMAGES_HI + th.PSL_WEIGHTED),

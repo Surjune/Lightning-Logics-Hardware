@@ -494,6 +494,23 @@ def t0_from_channel(cap: Capture, channel: str = "T0") -> float | None:
     return float(cap.time[idx[0] + 1]) if len(idx) else None
 
 
+# ---- capture sanity ------------------------------------------------------------------------------------
+def clipping_metrics(cap: Capture, min_run: int = 8) -> dict:
+    """Flat-topped runs at the capture's extreme values: the scope input was overdriven.
+
+    A clean sine sampled at 10 MSa/s never holds its peak value for 8 samples, so a
+    run that long at the global maximum or minimum means the waveform hit the ADC rails.
+    """
+    x = cap.ch()
+    runs = 0
+    for level in (x.max(), x.min()):
+        at = np.concatenate([[False], x == level, [False]])
+        edges = np.flatnonzero(np.diff(at.astype(int)))
+        lengths = edges[1::2] - edges[::2]
+        runs += int(np.sum(lengths >= min_run))
+    return {"clip_runs": runs}
+
+
 # ---- instrument floor ----------------------------------------------------------------------------------
 def floor_metrics(idle: Capture, reference_amplitude_v: float, f_lo: float = 50e3,
                   f_hi: float = 5e6) -> dict:

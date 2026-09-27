@@ -100,6 +100,7 @@ TRANSITION = [
     C("n_reverted", "==", 0, 0, "", "pings reverting to the old parameters"),
     C("latency_s", "<=", "latency_budget_s", None, "s", "input change to first new ping"),
 ]
+SANITY = [C("clip_runs", "==", 0, 0, "", "flat-topped runs at the capture extremes (scope input overdriven)")]
 FLOOR = [C("floor_dbc", "<=", -48.0, -60.0, "dBc", "instrument spur/noise floor vs full scale")]
 
 
@@ -146,7 +147,7 @@ def evaluate(metrics: dict, criteria: list[Criterion], *, floor_dbc: float | Non
 def all_criteria() -> dict[str, Criterion]:
     """Every criterion by metric name (used for regression direction)."""
     out = {}
-    for group in (EDGE, SWEEP, IMAGES_HI, IDLE, PSL_WEIGHTED, PSL_HANN, TONE, PRI, TRANSITION, FLOOR):
+    for group in (EDGE, SWEEP, IMAGES_HI, IDLE, PSL_WEIGHTED, PSL_HANN, TONE, PRI, TRANSITION, FLOOR, SANITY):
         for c in group:
             out.setdefault(c.metric, c)
     return out

@@ -266,7 +266,7 @@ def idle_capture(cfg: ChainConfig | None = None, scope: ScopeModel | None = None
     U, D = _choose_oversample(cfg.fs_dac, scope.fs)
     n = int(round(record * cfg.fs_dac))
     v = render_codes(np.full(n, 1 << (cfg.dac_bits - 1)), cfg, U, rng)[::D]
-    fixed = replace(scope, vdiv=scope.vdiv or 5e-3)
+    fixed = replace(scope, vdiv=scope.vdiv or 20e-3)  # +/-80 mV on screen
     y, vdiv = _digitise(v, fixed, rng)
     return Capture(1 / scope.fs, {"CH1": y}, 0.0, {"node": cfg.node, "vdiv": vdiv, "simulated": True,
                                                   "spec": None})
