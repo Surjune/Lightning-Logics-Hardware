@@ -214,6 +214,9 @@ non-zero. `sonarscope compare old.json new.json` compares any two runs.
   from a function generator and confirm amplitude, frequency and trigger time before
   trusting a full run. Timebase delay sign conventions differ between models; the
   analysis does not depend on trigger position, but the plots' time axis does.
+  For 12-bit Siglent captures also confirm the sample byte order: the driver follows the
+  SDS guide (`COMM_ORDER` 0 = LSB first, the default); a wrong order shows up as noise-like
+  garbage instead of the known sine.
 * The CSV importer handles the common Rigol-style (`X,CH1,Start,Increment`) and
   Siglent-style (key/value preamble, `Second,Value`) layouts; export formats vary by
   model and firmware, so check the first export from your scope with `sonarscope analyze`.

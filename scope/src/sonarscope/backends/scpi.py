@@ -232,6 +232,9 @@ class SiglentSDS(ScpiScope):
             self.w(f":WAVeform:STARt {start}")
             data += parse_ieee_block(self.raw(":WAVeform:DATA?"))
         if word:
+            # SDS programming guide: "COMM_ORDER ... 0 - LSB, 1 - MSB. Default value is 0", and
+            # its Python example unpacks the default as little-endian int16. (LeCroy numbers
+            # this field the other way round; confirm on the first real 12-bit capture.)
             codes = np.frombuffer(data, dtype=">i2" if d["comm_order"] == 1 else "<i2").astype(float)
         else:
             codes = np.frombuffer(data, dtype=np.int8).astype(float)

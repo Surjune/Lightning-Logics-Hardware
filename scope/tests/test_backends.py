@@ -140,8 +140,12 @@ class FakeSiglent(FakeInst):
         elif cmd == ":WAVeform:DATA?":
             chunk = self.codes[self.start: self.start + self.piece]
             if chunk.dtype == np.int16:
-                chunk = chunk.astype(">i2" if self.order == 1 else "<i2")
-            self.pending = block(chunk.tobytes())
+                # encode independently of the driver: per the guide, COMM_ORDER 0 = LSB first
+                fmt = "<" if self.order == 0 else ">"
+                payload = struct.pack(f"{fmt}{len(chunk)}h", *chunk.tolist())
+            else:
+                payload = chunk.tobytes()
+            self.pending = block(payload)
 
     def on_query(self, cmd):
         if cmd == ":ACQuire:POINts?":

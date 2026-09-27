@@ -95,8 +95,11 @@ def envelope_metrics(cap: Capture, spec: PulseSpec, edge_window: float = 3e-6) -
     def step(e, a, b):
         return float(e[min(len(e) - 1, a)] - e[max(0, b)])
 
-    start_step = step(env, i0 + W, i0 - W) / peak_v
-    end_step = step(env, i1 - 1 - W, i1 - 1 + W) / peak_v
+    # Without idle samples on both sides of the pulse an edge step cannot be measured;
+    # report NaN (which fails the criterion) rather than a falsely small step.
+    truncated = i0 - W < 0 or i1 - 1 + W >= len(env) or int(round(al.start)) < 0
+    start_step = step(env, i0 + W, i0 - W) / peak_v if not truncated else float("nan")
+    end_step = step(env, i1 - 1 - W, i1 - 1 + W) / peak_v if not truncated else float("nan")
     imax = max(iseg.max(), 1e-30)
     ideal_start = step(ideal, i0 + W, i0 - W) / imax
     ideal_end = step(ideal, i1 - 1 - W, i1 - 1 + W) / imax
@@ -115,7 +118,8 @@ def envelope_metrics(cap: Capture, spec: PulseSpec, edge_window: float = 3e-6) -
         "peak_v": peak_v,
         "window_rms_error": rms_err,
         "gain_variation_db": _db20(gain.max() / gain.min()) if gain.min() > 0 else float("nan"),
-        "edge_step_pct": float(100 * max(start_step, end_step)),
+        "edge_step_pct": float(100 * max(start_step, end_step)) if not truncated else float("nan"),
+        "pulse_truncated": bool(truncated),
         "edge_step_commanded_pct": float(100 * max(ideal_start, ideal_end)),
         "rise_s": rise, "fall_s": fall,
         "rise_commanded_s": irise, "fall_commanded_s": ifall,
@@ -221,6 +225,8 @@ def spur_metrics(cap: Capture, spec: PulseSpec, split_hz: float = 1.0e6,
     if spec.kind == "barker13":
         lo, hi = spec.f0 - 1 / spec.chip, spec.f0 + 1 / spec.chip
     band = (f >= 0.95 * lo) & (f <= 1.05 * hi)
+    if not band.any() or X[band].max() <= 0:
+        return {}  # the capture's bandwidth does not cover the pulse band
     ref = X[band].max()
     top = 0.98 * fs / 2
     out = {"inband_peak_v": float(ref), "analysis_top_hz": float(top)}
@@ -517,6 +523,8 @@ def floor_metrics(idle: Capture, reference_amplitude_v: float, f_lo: float = 50e
     """Largest spur / noise level of an idle capture relative to the signal amplitude."""
     f, X = amplitude_spectrum(idle.ch(), idle.fs, "flattop")
     m = (f >= f_lo) & (f <= min(f_hi, 0.98 * idle.fs / 2))
+    if not m.any():
+        return {"floor_rms_v": float(np.std(idle.ch())), "floor_dc_v": float(np.mean(idle.ch()))}
     k = np.flatnonzero(m)[np.argmax(X[m])]
     return {"floor_dbc": _db20(X[k] / reference_amplitude_v), "floor_peak_hz": float(f[k]),
             "floor_rms_v": float(np.std(idle.ch())), "floor_dc_v": float(np.mean(idle.ch()))}

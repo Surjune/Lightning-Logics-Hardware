@@ -195,3 +195,23 @@ def test_mixed_ping_of_equal_length_pulses_is_caught():
     segs = chain.simulate_segments([old, old, new, new], pri=10e-3, scope=SCOPE, mixed_index=2)
     t = M.transition_metrics(segs, old, new)
     assert t["labels"] == ["old", "old", "mixed", "new"]
+
+
+# ---- degenerate inputs --------------------------------------------------------------------------------
+def test_metrics_survive_band_outside_capture():
+    from sonarscope.capture import Capture
+    rng = np.random.default_rng(0)
+    cap = Capture(1 / 80e3, {"CH1": rng.normal(0, 1e-3, 4000)})
+    assert M.spur_metrics(cap, wf.PulseSpec("lfm", 100e3, 200e3, 1e-3)) == {}
+    fl = M.floor_metrics(cap, reference_amplitude_v=1.0)
+    assert "floor_dbc" not in fl and "floor_rms_v" in fl
+
+
+def test_pulse_touching_record_edge_cannot_pass_edge_check():
+    spec = wf.preset("lfm_hi_rect")
+    cap = chain.simulate(spec, ChainConfig(), SCOPE)
+    cut = cap.slice_time(1e-6, cap.time[-1])       # record starts after the hard edge
+    e = M.envelope_metrics(cut, spec)
+    assert e["pulse_truncated"] and np.isnan(e["edge_step_pct"])
+    from sonarscope import thresholds as th
+    assert th.evaluate(e, th.EDGE[:1])["verdict"] == th.FAIL
