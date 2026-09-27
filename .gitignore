@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Toolkit output (reports and ad-hoc captures)
+scope/out/
+*.npz
+!scope/tests/data/*.npz
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

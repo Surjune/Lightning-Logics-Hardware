@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sonarscope"
+version = "0.1.0"
+description = "Oscilloscope/FFT validation toolkit for the software-defined sonar transmitter"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "matplotlib>=3.7",
+]
+
+[project.optional-dependencies]
+visa = ["pyvisa>=1.13", "pyvisa-py>=0.7"]
+serial = ["pyserial>=3.5"]
+dev = ["pytest>=7"]
+
+[project.scripts]
+sonarscope = "sonarscope.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
