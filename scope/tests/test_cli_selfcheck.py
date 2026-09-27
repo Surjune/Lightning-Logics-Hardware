@@ -69,3 +69,12 @@ def test_cli_rejects_bad_input(tmp_path):
         cli.main(["simulate", "--fault", "slew_rate", "-o", str(tmp_path / "x.npz")])
     with pytest.raises(SystemExit):
         cli.main(["suite", "--bench", "rigol"])
+
+
+def test_readme_documents_every_criterion():
+    from pathlib import Path
+
+    from sonarscope import thresholds as th
+    readme = (Path(__file__).parents[1] / "README.md").read_text()
+    missing = [m for m in th.all_criteria() if f"`{m}`" not in readme and m not in readme]
+    assert not missing, f"criteria missing from README: {missing}"
