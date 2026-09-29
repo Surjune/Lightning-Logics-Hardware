@@ -121,7 +121,7 @@ At GPIO25 you see the raw DAC: 0.5 µs steps and images around 1.5 MHz. The anal
 ## Checking the firmware against the reference model
 
 ```bash
-pip install -e "scope[serial]"
+pip install -e "./scope[serial]"
 python firmware/tools/check_codes.py COM7
 python firmware/tools/check_adaptation.py COM7
 ```
