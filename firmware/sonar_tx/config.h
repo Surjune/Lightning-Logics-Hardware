@@ -15,12 +15,24 @@ constexpr uint32_t MAX_PULSE_SAMPLES = 20000; // 10 ms at 2 MSPS (two such buffe
 
 // ---- pins (38-pin ESP32 DevKit) --------------------------------------------------
 // GPIO25 is DAC channel 0 and is claimed by the DAC driver: that is the transmit output.
-constexpr int PIN_POT_TURBIDITY = 34;  // ADC1: pot wiper, ends on 3V3 and GND
-constexpr int PIN_POT_REACH = 35;      // ADC1: pot wiper, ends on 3V3 and GND
 constexpr int PIN_BUTTON = 0;          // on-board BOOT button (active low)
 constexpr int PIN_MARKER = 27;         // T0 marker -> scope CH2 (steps high on every change)
 
-// Set to 0 when no pots are wired: floating ADC pins would keep changing the pulse.
+// Environment inputs: a pot wiper on an ADC1 pin, pot ends on 3V3 and GND. An input whose
+// *_WIRED flag is 0 uses its default, or a value set with `ENV` (the dashboard's sliders).
+// Leave the flag at 0 for any pin with nothing connected: a floating pin reads noise.
+constexpr int PIN_POT_TURBIDITY = 34;  // 0-100 NTU
+constexpr int PIN_POT_RANGE = 35;      // 5-200 m, logarithmic
+constexpr int PIN_POT_TEMP = 32;       // 0-35 degC
+constexpr int PIN_POT_SALINITY = 33;   // 0-40 PSU
+constexpr int PIN_POT_DEPTH = 36;      // 0-300 m (board label SP / VP)
+#define TURBIDITY_POT_WIRED 1
+#define RANGE_POT_WIRED 1
+#define TEMP_POT_WIRED 0
+#define SALINITY_POT_WIRED 0
+#define DEPTH_POT_WIRED 0
+
+// Master switch: 0 ignores every pot (all inputs use defaults or `ENV` values).
 #define USE_POTS 1
 
 // ---- timing -----------------------------------------------------------------------
@@ -29,6 +41,7 @@ constexpr double DEFAULT_PRI_S = 20e-3;    // plan.py TestCase.pri
 constexpr uint32_t MARKER_HOLD_MS = 200;   // longer than the transition capture after T0
 constexpr uint32_t LONG_PRESS_MS = 600;
 constexpr uint32_t SERIAL_BAUD = 115200;   // dut.py SerialDut default
+constexpr uint32_t TELEMETRY_PERIOD_MS = 200;  // `TELEM ON` status lines for the dashboard
 
 // 240 MHz synthesises a new pulse fastest. Lower values (160, 80) cut current draw;
 // the DAC clock comes from PLL_D2 and does not change, but re-check a CW tone on the

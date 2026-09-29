@@ -55,7 +55,7 @@ reported **INCONCLUSIVE**, not FAIL: the scope, not the transmitter, may be what
 | Point | Node | Look for |
 |---|---|---|
 | TP1 | ESP32 DAC pin (GPIO25) | raw 8-bit steps, strong images |
-| TP2 | after AC coupling + buffer | idle level at 0 V |
+| TP2 | buffer output (U1A) | a copy of TP1, idle at about 1.65 V |
 | TP3 | after the 4th-order reconstruction filter | images suppressed |
 | TP4 | driver output across the dummy load | the deliverable; slew/drive problems show here |
 
@@ -191,6 +191,7 @@ non-zero. `sonarscope compare old.json new.json` compares any two runs.
 | Module | Role |
 |---|---|
 | `waveforms` | pulse specs, analytic waveforms and windows, DAC code generation, presets |
+| `acoustics` | sound speed, seawater and sediment absorption, and the transmitter's adaptation rule (reference for the firmware) |
 | `afe` | Sallen-Key filter design (E96 parts), DAC hold response |
 | `chain` | transmit-chain simulator with fault models, scope model, transition schedule |
 | `capture` | capture container; npz, generic / Rigol / Siglent CSV |
