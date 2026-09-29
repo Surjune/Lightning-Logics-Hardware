@@ -2,25 +2,34 @@
 //
 // Output: GPIO25 (DAC channel 0), 2 MSPS, fed by DMA. Two ways to drive it:
 //
-// * Demo mode (at power-up): two pots stand in for the environment sensors and the
-//   firmware adapts centre frequency / bandwidth, pulse duration and amplitude to them.
-//   BOOT button: short press = next modulation (LFM, geometric, Barker-13, CW),
+// * Adaptive mode (at power-up): the environment (turbidity, range, temperature, salinity,
+//   depth; pots or `ENV` values) goes through a physics model (env_model.cpp: sound speed,
+//   seawater + sediment absorption, spreading loss) that picks the band, pulse length,
+//   amplitude, window, modulation and ping interval.
+//   BOOT button: short press = next modulation (auto, LFM, geometric, Barker-13, CW),
 //   long press = next window (auto, rect, tukey, hann, hamming, blackman).
-// * Host mode (after any protocol command): the serial test-mode protocol that
-//   `sonarscope suite --dut serial` speaks. One command per line, one reply per command:
-//     CFG <PulseSpec JSON>   select the pulse; OK once it is on air
-//     NEXT <PulseSpec JSON>  change through the adaptation path, T0 marker steps high
-//     PRI <seconds>          ping repetition interval
-//     RUN | IDLE             start pinging / stop at mid-scale after the current ping
-//     PRESET <name>          load a named sonarscope preset (lfm_hi, barker13, ...)
-//     DEMO                   back to pot control
-//     STATUS | DUMP | HELP   state / DAC codes of the active pulse (hex) / command list
-//   Replies start with OK or ERR. Other lines this firmware prints start with '#'.
+// * Host mode (after CFG / NEXT / PRI / RUN / IDLE / PRESET): the serial test-mode protocol
+//   that `sonarscope suite --dut serial` speaks.
+//
+// Serial commands, one per line, one reply line (OK ... / ERR ...) each:
+//   CFG <PulseSpec JSON>   select the pulse; OK once it is on air
+//   NEXT <PulseSpec JSON>  change through the adaptation path, T0 marker steps high
+//   PRI <seconds>          ping repetition interval
+//   RUN | IDLE             start pinging / stop at mid-scale after the current ping
+//   PRESET <name>          load a named sonarscope preset (lfm_hi, barker13, ...)
+//   ENV [k=v ...|AUTO]     set environment inputs (turbidity, range, temp, salinity, depth);
+//                          AUTO returns them to the pots / defaults; no argument lists them
+//   MOD <mode> | WIN <mode>  modulation / window for adaptive mode ("auto" = the model picks)
+//   DEMO                   back to adaptive mode
+//   TELEM ON|OFF           '@{json}' status lines every 200 ms and on every change
+//   STATUS | DUMP | HELP   state / DAC codes of the active pulse (hex) / command list
+// Other lines start with '#' (log) or '@' (telemetry).
 //
 // Arduino IDE: board "ESP32 Dev Module", esp32 core 3.x, Serial Monitor at 115200 baud
 // with "Newline" line endings.
 
 #include <Arduino.h>
+#include <stdarg.h>
 
 #if !defined(CONFIG_IDF_TARGET_ESP32)
 #error "Select an ESP32 board (ESP32 Dev Module): this firmware needs the ESP32's built-in DAC."
@@ -31,6 +40,7 @@
 
 #include "config.h"
 #include "dac_stream.h"
+#include "env_model.h"
 #include "pulse.h"
 
 namespace {
@@ -73,22 +83,69 @@ const Preset PRESETS[] = {
     {"muddy_estuary", makeSpec(PulseKind::LFM, 100e3, 140e3, 5e-3, Window::TUKEY, 0.2, 1.0)},
 };
 
-// ---- state -----------------------------------------------------------------------------
+// ---- environment inputs ---------------------------------------------------------------------
+constexpr int ENV_STEPS = 50;  // pot resolution: 2 % steps, with hysteresis
+
+struct EnvInput {
+  const char *key;
+  const char *unit;
+  int pin;
+  bool wired;
+  double lo, hi, def;
+  bool logScale;
+  int step;         // last pot reading, -1 = none yet
+  bool overridden;  // set with ENV
+  double value;     // the ENV value
+};
+
+EnvInput INPUTS[] = {
+    {"turbidity", "NTU", PIN_POT_TURBIDITY, USE_POTS && TURBIDITY_POT_WIRED, 0.0, NTU_MAX, 0.0, false, -1, false, 0.0},
+    {"range", "m", PIN_POT_RANGE, USE_POTS && RANGE_POT_WIRED, RANGE_MIN_M, RANGE_MAX_M, 60.0, true, -1, false, 0.0},
+    {"temp", "C", PIN_POT_TEMP, USE_POTS && TEMP_POT_WIRED, 0.0, 35.0, 25.0, false, -1, false, 0.0},
+    {"salinity", "PSU", PIN_POT_SALINITY, USE_POTS && SALINITY_POT_WIRED, 0.0, 40.0, 35.0, false, -1, false, 0.0},
+    {"depth", "m", PIN_POT_DEPTH, USE_POTS && DEPTH_POT_WIRED, 0.0, 300.0, 10.0, false, -1, false, 0.0},
+};
+constexpr int N_INPUTS = sizeof(INPUTS) / sizeof(INPUTS[0]);
+
+double inputValue(const EnvInput &in) {
+  if (in.overridden) return in.value;
+  if (!in.wired || in.step < 0) return in.def;
+  const double x = in.step / (double)ENV_STEPS;
+  return in.logScale ? in.lo * pow(in.hi / in.lo, x) : in.lo + (in.hi - in.lo) * x;
+}
+
+const char *inputSource(const EnvInput &in) { return in.overridden ? "set" : (in.wired ? "pot" : "default"); }
+
+Environment currentEnv() {
+  Environment e;
+  e.turbidity_ntu = inputValue(INPUTS[0]);
+  e.range_m = inputValue(INPUTS[1]);
+  e.temp_c = inputValue(INPUTS[2]);
+  e.salinity_psu = inputValue(INPUTS[3]);
+  e.depth_m = inputValue(INPUTS[4]);
+  return e;
+}
+
+// ---- state -----------------------------------------------------------------------------------
 PulseSpec current;           // last pulse handed to the stream
-bool hostMode = false;       // true: serial protocol in control, pots ignored
+bool hostMode = false;       // true: serial protocol in control, environment ignored
 uint32_t synthUs = 0;        // time to synthesise the last pulse
 uint32_t markerOffAt = 0;
+uint32_t seq = 0;            // bumps on every pulse / PRI change (the dashboard re-reads DUMP)
 
-// demo mode
-constexpr int ENV_STEPS = 50;  // pot resolution: 2 % steps, with hysteresis
-const PulseKind DEMO_KINDS[] = {PulseKind::LFM, PulseKind::GEOMETRIC, PulseKind::BARKER13, PulseKind::CW};
-int demoKind = 0;
-int demoWindow = 0;            // 0 = auto, otherwise 1 + Window value
-int turbStep = -1, reachStep = -1;
-bool demoDirty = true;
+ModMode modMode = ModMode::AUTO;
+WinMode winMode = WinMode::AUTO;
+Decision decision;
+bool haveDecision = false;
+bool envDirty = true;
+bool forceReload = true;
 uint32_t lastAdcMs = 0;
 
-// ---- output helpers ----------------------------------------------------------------------
+bool telemetryOn = false;
+uint32_t lastTelemetryMs = 0;
+bool telemetryDue = false;
+
+// ---- output helpers ----------------------------------------------------------------------------
 void raiseMarker() {
   if (digitalRead(PIN_MARKER)) {  // already high from a recent change: make a fresh edge
     digitalWrite(PIN_MARKER, LOW);
@@ -115,6 +172,12 @@ String describe(const PulseSpec &s) {
   return String(buf);
 }
 
+bool sameSpec(const PulseSpec &a, const PulseSpec &b) {
+  return a.kind == b.kind && a.f0 == b.f0 && a.f1 == b.f1 && a.duration == b.duration && a.window == b.window &&
+         a.tukey_alpha == b.tukey_alpha && a.amplitude == b.amplitude && a.chip == b.chip &&
+         a.rc_shaping == b.rc_shaping;
+}
+
 uint32_t frameTimeoutMs() {
   const uint64_t samples = (uint64_t)streamPri() + pulseSamples(current, FS_DAC);
   return (uint32_t)(samples * 1000 / FS_DAC) + 200;
@@ -134,6 +197,8 @@ bool loadPulse(const PulseSpec &spec, bool waitLive, const char *&err) {
   synthUs = micros() - t0;
   streamCommit(n);
   current = spec;
+  ++seq;
+  telemetryDue = true;
   if (waitLive && !streamWaitSwap(frameTimeoutMs())) {
     err = "pulse not swapped in: DMA stream stalled";
     return false;
@@ -213,6 +278,54 @@ bool parseSpec(const char *js, PulseSpec &spec, const char *&err) {
   return true;
 }
 
+// ---- telemetry ----------------------------------------------------------------------------------
+struct Out {  // bounded string builder
+  char buf[1600];
+  size_t n = 0;
+  void add(const char *fmt, ...) {
+    if (n >= sizeof buf) return;
+    va_list ap;
+    va_start(ap, fmt);
+    const int k = vsnprintf(buf + n, sizeof buf - n, fmt, ap);
+    va_end(ap);
+    if (k > 0) n = n + (size_t)k < sizeof buf ? n + (size_t)k : sizeof buf - 1;
+  }
+};
+
+void sendTelemetry() {
+  static Out o;
+  o.n = 0;
+  uint32_t samples = 0;
+  streamActive(&samples);
+  o.add("@{\"v\":1,\"seq\":%lu,\"mode\":\"%s\",\"run\":%d,\"mod\":\"%s\",\"win\":\"%s\",\"fs\":%lu,\"env\":{",
+        (unsigned long)seq, hostMode ? "host" : "adaptive", streamRunning() ? 1 : 0, modName(modMode),
+        winModeName(winMode), (unsigned long)FS_DAC);
+  for (int i = 0; i < N_INPUTS; ++i) o.add("%s\"%s\":%.2f", i ? "," : "", INPUTS[i].key, inputValue(INPUTS[i]));
+  o.add("},\"src\":{");
+  for (int i = 0; i < N_INPUTS; ++i) o.add("%s\"%s\":\"%s\"", i ? "," : "", INPUTS[i].key, inputSource(INPUTS[i]));
+  const PulseSpec &s = current;
+  // full precision (%.17g round-trips a double), so a receiver rebuilds exactly this pulse
+  o.add("},\"pulse\":{\"kind\":\"%s\",\"f0\":%.17g,\"f1\":%.17g,\"duration\":%.17g,\"window\":\"%s\","
+        "\"tukey_alpha\":%.17g,\"amplitude\":%.17g,\"chip\":%.17g,\"rc_shaping\":%.17g,\"samples\":%lu},\"pri\":%.6f",
+        kindName(s.kind), s.f0, s.f1, s.kind == PulseKind::BARKER13 ? 13 * s.chip : s.duration, windowName(s.window),
+        s.tukey_alpha, s.amplitude, s.chip, s.rc_shaping, (unsigned long)samples,
+        streamPri() / (double)FS_DAC);
+  if (!hostMode && haveDecision) {
+    const Decision &d = decision;
+    o.add(",\"phys\":{\"c\":%.2f,\"fc\":%.0f,\"bw\":%.0f,\"alpha\":%.2f,\"abs2w\":%.2f,\"tl\":%.2f,"
+          "\"demand\":%.4f,\"limited\":%d,\"reach\":%.1f,\"res\":%.5f,\"blind\":%.4f,\"tb\":%.2f,"
+          "\"energy_db\":%.2f,\"avg_power_db\":%.2f}",
+          d.sound_speed, d.fc_hz, d.bandwidth_hz, d.alpha_db_km, d.absorption_2way_db, d.tl_2way_db, d.demand,
+          d.range_limited ? 1 : 0, d.achievable_range_m, d.range_resolution_m, d.blind_zone_m, d.time_bandwidth,
+          d.energy_db, d.avg_power_db);
+  }
+  o.add(",\"stats\":{\"pings\":%lu,\"synth_us\":%lu,\"underruns\":%lu}}\n", (unsigned long)streamPings(),
+        (unsigned long)synthUs, (unsigned long)streamUnderruns());
+  Serial.write((const uint8_t *)o.buf, o.n);
+  lastTelemetryMs = millis();
+  telemetryDue = false;
+}
+
 // ---- serial protocol ---------------------------------------------------------------------
 void reply(const char *status, const char *detail = nullptr) {
   Serial.print(status);
@@ -223,21 +336,31 @@ void reply(const char *status, const char *detail = nullptr) {
   Serial.print('\n');
 }
 
+String envSummary() {
+  String s;
+  char buf[48];
+  for (int i = 0; i < N_INPUTS; ++i) {
+    snprintf(buf, sizeof buf, "%s%s=%.2f", i ? " " : "", INPUTS[i].key, inputValue(INPUTS[i]));
+    s += buf;
+  }
+  return s;
+}
+
 void replyStatus() {
   uint32_t n = 0;
   streamActive(&n);
-  char buf[400];
+  char buf[480];
   snprintf(buf, sizeof buf,
            "mode=%s run=%d kind=%s f0=%.1f f1=%.1f duration=%.6f window=%s tukey_alpha=%.3f "
            "amplitude=%.3f chip=%.7f rc_shaping=%.3f samples=%lu pri=%.6f pings=%lu synth_us=%lu "
-           "underruns=%lu dma_samples=%lu turbidity=%.2f reach=%.2f",
-           hostMode ? "host" : "demo", streamRunning() ? 1 : 0, kindName(current.kind), current.f0,
+           "underruns=%lu dma_samples=%lu mod=%s win=%s ",
+           hostMode ? "host" : "adaptive", streamRunning() ? 1 : 0, kindName(current.kind), current.f0,
            current.f1, pulseSamples(current, FS_DAC) / (double)FS_DAC, windowName(current.window),
            current.tukey_alpha, current.amplitude, current.chip, current.rc_shaping, (unsigned long)n,
            streamPri() / (double)FS_DAC, (unsigned long)streamPings(), (unsigned long)synthUs,
-           (unsigned long)streamUnderruns(), (unsigned long)streamSamplesPerBuffer(),
-           turbStep < 0 ? -1.0 : turbStep / (double)ENV_STEPS, reachStep < 0 ? -1.0 : reachStep / (double)ENV_STEPS);
-  reply("OK", buf);
+           (unsigned long)streamUnderruns(), (unsigned long)streamSamplesPerBuffer(), modName(modMode),
+           winModeName(winMode));
+  reply("OK", (String(buf) + envSummary()).c_str());
 }
 
 void replyDump() {
@@ -264,16 +387,53 @@ void replyDump() {
   Serial.print('\n');
 }
 
-void enterHostMode() {
-  if (!hostMode) hostMode = true;
+void enterAdaptiveMode() {
+  hostMode = false;
+  for (EnvInput &in : INPUTS) in.step = -1;  // re-read the pots
+  envDirty = true;
+  forceReload = true;
+  streamRun(true);
 }
 
-void enterDemoMode() {
-  hostMode = false;
-  turbStep = reachStep = -1;  // re-read the pots and re-synthesise
-  demoDirty = true;
-  streamSetPri((uint32_t)(DEFAULT_PRI_S * FS_DAC + 0.5));
-  streamRun(true);
+// ENV turbidity=40 range=120 ... | ENV AUTO | ENV
+bool handleEnv(char *arg, const char *&err) {
+  if (!strcasecmp(arg, "AUTO") || !strcasecmp(arg, "CLEAR")) {
+    for (EnvInput &in : INPUTS) in.overridden = false;
+    return true;
+  }
+  double values[N_INPUTS];
+  bool set[N_INPUTS] = {};
+  for (char *tok = strtok(arg, " \t"); tok; tok = strtok(nullptr, " \t")) {
+    char *eq = strchr(tok, '=');
+    if (!eq) {
+      err = "expected key=value";
+      return false;
+    }
+    *eq = '\0';
+    int i = 0;
+    while (i < N_INPUTS && strcasecmp(tok, INPUTS[i].key)) ++i;
+    if (i == N_INPUTS) {
+      err = "keys: turbidity, range, temp, salinity, depth";
+      return false;
+    }
+    char *end = nullptr;
+    const double v = strtod(eq + 1, &end);
+    if (end == eq + 1 || v < INPUTS[i].lo || v > INPUTS[i].hi) {
+      static char msg[64];
+      snprintf(msg, sizeof msg, "%s must be %g to %g %s", INPUTS[i].key, INPUTS[i].lo, INPUTS[i].hi, INPUTS[i].unit);
+      err = msg;
+      return false;
+    }
+    values[i] = v;
+    set[i] = true;
+  }
+  for (int i = 0; i < N_INPUTS; ++i) {  // all or nothing
+    if (set[i]) {
+      INPUTS[i].overridden = true;
+      INPUTS[i].value = values[i];
+    }
+  }
+  return true;
 }
 
 void handleCommand(char *line) {
@@ -288,14 +448,14 @@ void handleCommand(char *line) {
     const bool next = !strcasecmp(line, "NEXT");
     PulseSpec spec;
     if (!parseSpec(arg, spec, err)) return reply("ERR", err);
-    enterHostMode();
+    hostMode = true;
     if (next) raiseMarker();
     if (!loadPulse(spec, !next, err)) return reply("ERR", err);
     reply("OK");
   } else if (!strcasecmp(line, "PRESET")) {
     for (const Preset &p : PRESETS) {
       if (!strcasecmp(arg, p.name)) {
-        enterHostMode();
+        hostMode = true;
         if (!loadPulse(p.spec, true, err)) return reply("ERR", err);
         return reply("OK", describe(p.spec).c_str());
       }
@@ -305,27 +465,47 @@ void handleCommand(char *line) {
     char *end = nullptr;
     const double pri = strtod(arg, &end);
     if (end == arg || !(pri >= 1e-4 && pri <= 10.0)) return reply("ERR", "PRI must be 0.0001 to 10 s");
-    enterHostMode();
+    hostMode = true;
     streamSetPri((uint32_t)(pri * FS_DAC + 0.5));
+    ++seq;
     reply("OK");
   } else if (!strcasecmp(line, "RUN")) {
-    enterHostMode();
+    hostMode = true;
     streamRun(true);
     reply("OK");
   } else if (!strcasecmp(line, "IDLE")) {
-    enterHostMode();
+    hostMode = true;
     streamRun(false);
     reply("OK");
-  } else if (!strcasecmp(line, "DEMO")) {
-    enterDemoMode();
+  } else if (!strcasecmp(line, "ENV")) {
+    if (!*arg) return reply("OK", envSummary().c_str());
+    if (!handleEnv(arg, err)) return reply("ERR", err);
+    if (hostMode) enterAdaptiveMode();
+    envDirty = true;
+    reply("OK");
+  } else if (!strcasecmp(line, "MOD") || !strcasecmp(line, "WIN")) {
+    const bool mod = !strcasecmp(line, "MOD");
+    if (mod ? !parseModMode(arg, modMode) : !parseWinMode(arg, winMode))
+      return reply("ERR", mod ? "MOD auto|lfm|geometric|barker13|cw" : "WIN auto|rect|tukey|hann|hamming|blackman");
+    if (hostMode) enterAdaptiveMode();
+    envDirty = true;
+    reply("OK");
+  } else if (!strcasecmp(line, "DEMO") || !strcasecmp(line, "ADAPT")) {
+    enterAdaptiveMode();
+    reply("OK");
+  } else if (!strcasecmp(line, "TELEM")) {
+    if (!strcasecmp(arg, "ON")) telemetryOn = true;
+    else if (!strcasecmp(arg, "OFF")) telemetryOn = false;
+    else return reply("ERR", "TELEM ON|OFF");
+    telemetryDue = telemetryOn;
     reply("OK");
   } else if (!strcasecmp(line, "STATUS")) {
     replyStatus();
   } else if (!strcasecmp(line, "DUMP")) {
     replyDump();
   } else if (!strcasecmp(line, "HELP")) {
-    String s = "commands: CFG <json> | NEXT <json> | PRI <s> | RUN | IDLE | PRESET <name> | DEMO | "
-               "STATUS | DUMP | HELP; presets:";
+    String s = "commands: CFG <json> | NEXT <json> | PRI <s> | RUN | IDLE | PRESET <name> | ENV [k=v..|AUTO] | "
+               "MOD <m> | WIN <w> | DEMO | TELEM ON|OFF | STATUS | DUMP | HELP; presets:";
     for (const Preset &p : PRESETS) s += String(' ') + p.name;
     reply("OK", s.c_str());
   } else if (*line) {
@@ -354,96 +534,64 @@ void pollSerial() {
   }
 }
 
-// ---- demo mode: environment -> pulse --------------------------------------------------------
-// Turbidity sets the band: suspended sediment scatters high frequencies, so the carrier
-// moves from 450 kHz (clear, fine resolution) down to 120 kHz (muddy, penetration), and the
-// swept bandwidth scales with it (400-500 kHz down to 100-140 kHz, the sonarscope
-// clear_reef / muddy_estuary presets). The energy demand is the larger of turbidity (loss)
-// and required reach; it stretches the pulse from 1 to 5 ms and raises the amplitude from
-// 0.5 to 1.0, so a clear, close-range scene spends the least battery.
-PulseSpec demoSpec(float turbidity, float reach, PulseKind kind, int windowMode) {
-  const float energy = max(turbidity, reach);
-  const double fc = 450e3 - 330e3 * turbidity;
-  const double bw = 100e3 - 60e3 * turbidity;
-  PulseSpec s;
-  s.kind = kind;
-  s.duration = 1e-3 + 4e-3 * energy;
-  s.amplitude = 0.5 + 0.5 * energy;
-  s.f0 = s.f1 = fc;
-  if (kind == PulseKind::LFM || kind == PulseKind::GEOMETRIC) {
-    s.f0 = fc - bw / 2;
-    s.f1 = fc + bw / 2;
-  } else if (kind == PulseKind::BARKER13) {
-    s.chip = s.duration / 13;  // longer pulse = longer chips
-    s.rc_shaping = 0.2;
-  }
-  if (windowMode == 0) {  // auto: short pulses favour low sidelobes, long ones energy
-    s.window = kind == PulseKind::BARKER13 || energy >= 0.5f ? Window::TUKEY : Window::HANN;
-    s.tukey_alpha = kind == PulseKind::BARKER13 ? 0.12 : 0.2;
-  } else {
-    s.window = (Window)(windowMode - 1);
-  }
-  return s;
-}
-
-const char *zoneName(float turbidity) {
-  if (turbidity < 0.33f) return "CLEAR SHALLOW REEF";
-  if (turbidity > 0.66f) return "MUDDY ESTUARY";
-  return "COASTAL / MIXED";
-}
-
+// ---- adaptive mode ----------------------------------------------------------------------------
 int readStep(int pin, int current) {
-#if USE_POTS
   uint32_t sum = 0;
   for (int i = 0; i < 8; ++i) sum += analogRead(pin);
   const float pos = sum / (8 * 4095.0f) * ENV_STEPS;
   if (current >= 0 && fabsf(pos - current) < 0.75f) return current;  // hysteresis
   return (int)lroundf(pos);
-#else
-  (void)pin;
-  return current >= 0 ? current : 0;  // no pots: clear reef, close range
-#endif
 }
 
 void pollEnvironment() {
   if (millis() - lastAdcMs < ADC_PERIOD_MS) return;
   lastAdcMs = millis();
-  const int t = readStep(PIN_POT_TURBIDITY, turbStep);
-  const int r = readStep(PIN_POT_REACH, reachStep);
-  if (t != turbStep || r != reachStep) {
-    turbStep = t;
-    reachStep = r;
-    demoDirty = true;
+  for (EnvInput &in : INPUTS) {
+    if (!in.wired) continue;
+    const int s = readStep(in.pin, in.step);
+    if (s != in.step) {
+      in.step = s;
+      if (!in.overridden) envDirty = true;
+    }
   }
-  if (!demoDirty || streamSwapPending()) return;  // retry after the pending swap
+  if (!envDirty || streamSwapPending()) return;  // retry after the pending swap
 
-  const float turbidity = turbStep / (float)ENV_STEPS, reach = reachStep / (float)ENV_STEPS;
-  const PulseSpec spec = demoSpec(turbidity, reach, DEMO_KINDS[demoKind], demoWindow);
-  const char *err = nullptr;
+  const Environment env = currentEnv();
+  decision = decide(env, modMode, winMode);
+  haveDecision = true;
+  envDirty = false;
+  telemetryDue = true;
+  const uint32_t priSamples = (uint32_t)(decision.pri_s * FS_DAC + 0.5);
+  if (!forceReload && sameSpec(decision.spec, current) && priSamples == streamPri()) return;
+
+  forceReload = false;
   raiseMarker();
-  if (!loadPulse(spec, false, err)) {
-    Serial.printf("# demo pulse rejected: %s\n", err);
-  } else {
-    Serial.printf("# ENV turbidity %.2f reach %.2f [%s] -> %s | synth %.2f ms\n", turbidity, reach,
-                  zoneName(turbidity), describe(spec).c_str(), synthUs / 1000.0);
+  streamSetPri(priSamples);
+  const char *err = nullptr;
+  if (!loadPulse(decision.spec, false, err)) {
+    Serial.printf("# adaptive pulse rejected: %s\n", err);
+    return;
   }
-  demoDirty = false;
+  Serial.printf("# ENV %.0f NTU, %.0f m, %.1f C, %.1f PSU, %.0f m deep -> %s, PRI %.1f ms | res %.1f cm%s | synth %.2f ms\n",
+                env.turbidity_ntu, env.range_m, env.temp_c, env.salinity_psu, env.depth_m,
+                describe(decision.spec).c_str(), decision.pri_s * 1e3, decision.range_resolution_m * 100,
+                decision.range_limited ? " | range-limited" : "", synthUs / 1000.0);
 }
 
 void onButton(bool longPress) {
   if (hostMode) {
-    Serial.println("# demo mode (pots in control)");
-    enterDemoMode();
+    Serial.println("# adaptive mode");
+    enterAdaptiveMode();
     return;
   }
   if (longPress) {
-    demoWindow = (demoWindow + 1) % 6;
-    Serial.printf("# window: %s\n", demoWindow ? windowName((Window)(demoWindow - 1)) : "auto");
+    winMode = (WinMode)(((int)winMode + 1) % 6);
+    Serial.printf("# window: %s\n", winModeName(winMode));
   } else {
-    demoKind = (demoKind + 1) % 4;
-    Serial.printf("# modulation: %s\n", kindName(DEMO_KINDS[demoKind]));
+    modMode = (ModMode)(((int)modMode + 1) % 5);
+    Serial.printf("# modulation: %s\n", modName(modMode));
   }
-  demoDirty = true;
+  envDirty = true;
 }
 
 void pollButton() {
@@ -462,6 +610,7 @@ void pollButton() {
 void setup() {
   setCpuFrequencyMhz(CPU_FREQ_MHZ);
   Serial.setRxBufferSize(1024);
+  Serial.setTxBufferSize(4096);  // telemetry lines queue without stalling the loop
   Serial.begin(SERIAL_BAUD);
   pinMode(PIN_BUTTON, INPUT_PULLUP);
   pinMode(PIN_MARKER, OUTPUT);
@@ -469,6 +618,7 @@ void setup() {
   analogReadResolution(12);
 
   pulseInit();
+  envModelInit();
   if (const char *err = streamBegin(FS_DAC)) {
     for (;;) {
       Serial.printf("# FATAL: DAC stream failed to start: %s\n", err);
@@ -476,9 +626,9 @@ void setup() {
     }
   }
   Serial.println("# sonar_tx ready: GPIO25 DAC out @ 2 MSPS, T0 marker on GPIO27");
-  Serial.println("# demo mode: pots GPIO34 (turbidity) / GPIO35 (reach); BOOT = next modulation, hold = next window");
+  Serial.println("# adaptive mode: turbidity pot GPIO34, range pot GPIO35 (see config.h); BOOT = next modulation, hold = next window");
   Serial.println("# type HELP for the serial commands");
-  enterDemoMode();
+  enterAdaptiveMode();
 }
 
 void loop() {
@@ -489,5 +639,6 @@ void loop() {
     digitalWrite(PIN_MARKER, LOW);
     markerOffAt = 0;
   }
+  if (telemetryOn && (telemetryDue || millis() - lastTelemetryMs >= TELEMETRY_PERIOD_MS)) sendTelemetry();
   delay(1);  // lets the idle task run (CPU waits for interrupts between polls)
 }

@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sonar Transmitter Console</title>
+<style>
+  :root {
+    --bg: #0c1822; --panel: #122433; --panel2: #16293a; --line: #22384a; --text: #e6edf2;
+    --muted: #9fb3c2; --accent: #3fc1b5; --orange: #f2994a; --warn: #f2c94c; --bad: #eb6f6f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  .spacer { flex: 1; }
+  .pill { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--panel2); color: var(--muted); border: 1px solid var(--line); }
+  .pill.live { color: #0c1822; background: var(--accent); border-color: var(--accent); }
+  .pill.sim { color: #0c1822; background: var(--warn); border-color: var(--warn); }
+  button, select { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button:hover, select:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #0c1822; border-color: var(--accent); font-weight: 650; }
+  button:disabled { opacity: .45; cursor: default; }
+  main { display: grid; grid-template-columns: 320px 1fr; gap: 16px; padding: 16px 20px 24px; }
+  @media (max-width: 1000px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); margin: 0 0 10px; font-weight: 650; }
+  .controls { display: flex; flex-direction: column; gap: 16px; }
+  .slider { margin-bottom: 12px; }
+  .slider .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .slider label { font-weight: 600; }
+  .slider .val { font-variant-numeric: tabular-nums; }
+  .src { font-size: 11px; padding: 1px 6px; border-radius: 6px; margin-left: 6px; border: 1px solid var(--line); color: var(--muted); }
+  .src.pot { color: var(--accent); border-color: var(--accent); }
+  .src.set { color: var(--orange); border-color: var(--orange); }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg button { padding: 4px 10px; font-size: 13px; }
+  .seg button.on { background: var(--accent); color: #0c1822; border-color: var(--accent); font-weight: 650; }
+  .row2 { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .content { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .zone { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .zone .name { font-size: 22px; font-weight: 700; }
+  .zone .why { color: var(--muted); }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
+  .kpi { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+  .kpi .k { font-size: 12px; color: var(--muted); }
+  .kpi .v { font-size: 20px; font-weight: 650; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .kpi .v small { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .plots { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 1300px) { .plots { grid-template-columns: 1fr; } }
+  .plot { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px 12px; min-width: 0; }
+  .plot .t { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; margin-bottom: 6px; }
+  .plot .t span { color: var(--muted); font-weight: 400; font-size: 12px; }
+  .plot canvas { width: 100%; height: 240px; display: block; }
+  .plot.wide { grid-column: 1 / -1; }
+  #log { font: 12px/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; color: var(--muted); height: 130px; overflow: auto; white-space: pre-wrap; }
+  .note { color: var(--muted); font-size: 12px; }
+  .badge-warn { color: var(--warn); }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Sonar Transmitter Console</h1>
+    <div class="sub">PS 26058 · adaptive software-defined sonar transmitter · ESP32, 2 MSPS DAC</div>
+  </div>
+  <div class="spacer"></div>
+  <span id="mode" class="pill">not connected</span>
+  <button id="connect" class="primary">Connect board</button>
+  <button id="simulate">Simulate</button>
+</header>
+
+<main>
+  <div class="controls">
+    <section class="panel">
+      <h2>Environment</h2>
+      <div id="sliders"></div>
+      <div class="row2"><button id="pots">Hand back to pots</button><span class="note">sliders act as sensors</span></div>
+    </section>
+    <section class="panel">
+      <h2>Modulation</h2>
+      <div class="seg" id="mods"></div>
+      <h2 style="margin-top:14px">Window</h2>
+      <div class="seg" id="wins"></div>
+    </section>
+    <section class="panel">
+      <h2>Fixed test pulses</h2>
+      <div class="row2">
+        <select id="preset"></select>
+        <button id="loadPreset">Load</button>
+        <button id="adaptive">Adaptive mode</button>
+      </div>
+      <p class="note">Presets put the board in host mode (environment ignored) until you move a slider or press Adaptive mode.</p>
+    </section>
+    <section class="panel">
+      <h2>Serial log</h2>
+      <div id="log"></div>
+    </section>
+  </div>
+
+  <div class="content">
+    <section class="panel">
+      <div class="zone"><span class="name" id="zone">—</span><span class="why" id="why">Connect a board or press Simulate.</span></div>
+      <div class="kpis" id="kpis"></div>
+    </section>
+    <div class="plots">
+      <div class="plot"><div class="t">Transmitted pulse <span id="tsrc">DAC output, V</span></div><canvas id="cTime"></canvas></div>
+      <div class="plot"><div class="t">Spectrum <span>FFT of the pulse, dB</span></div><canvas id="cSpec"></canvas></div>
+      <div class="plot"><div class="t">Spectrogram <span>frequency vs time</span></div><canvas id="cSgram"></canvas></div>
+      <div class="plot"><div class="t">Matched-filter output <span>range sidelobes, dB</span></div><canvas id="cMf"></canvas></div>
+      <div class="plot wide"><div class="t">Why this band <span>attenuation vs frequency for the current water, and the budget over the required range</span></div><canvas id="cPhys" style="height:260px"></canvas></div>
+    </div>
+  </div>
+</main>
+
+<script>
+"use strict";
+// =====================================================================================
+// Physics model: a port of scope/src/sonarscope/acoustics.py (the firmware runs the same).
+// =====================================================================================
+const M = {
+  FC_MAX: 450e3, FC_MIN: 120e3, FC_STEP: 2.5e3, BW_MIN: 40e3, BW_MAX: 100e3, BUDGET: 20.0,
+  KSED: 0.008, PH: 8.0, RANGE_MIN: 5, RANGE_MAX: 200, NTU_MAX: 100, REF: [20, 35, 10],
+  T_MIN: 1e-3, T_MAX: 5e-3, A_MIN: 0.5, A_MAX: 1.0, BLIND: 0.1, PRI_MIN: 20e-3, PRI_MARGIN: 1.25,
+};
+M.ENERGY_SPAN = 10 * Math.log10(M.T_MAX / M.T_MIN) + 20 * Math.log10(M.A_MAX / M.A_MIN);
+
+function soundSpeed(T, S, D) {
+  return 1448.96 + 4.591 * T - 5.304e-2 * T * T + 2.374e-4 * T ** 3 + 1.340 * (S - 35) + 1.630e-2 * D
+    + 1.675e-7 * D * D - 1.025e-2 * T * (S - 35) - 7.139e-13 * T * D ** 3;
+}
+function fgCoef(T, S, D) {
+  S = Math.max(S, 0);
+  const c = 1412 + 3.21 * T + 1.19 * S + 0.0167 * D, th = 273 + T;
+  const a1 = 8.86 / c * 10 ** (0.78 * M.PH - 5), f1 = 2.8 * Math.sqrt(S / 35) * 10 ** (4 - 1245 / th);
+  const a2 = 21.44 * S / c * (1 + 0.025 * T), p2 = 1 - 1.37e-4 * D + 6.2e-9 * D * D;
+  const f2 = 8.17 * 10 ** (8 - 1990 / th) / (1 + 0.0018 * (S - 35));
+  const a3 = T <= 20 ? 4.937e-4 - 2.59e-5 * T + 9.11e-7 * T * T - 1.50e-8 * T ** 3
+                     : 3.964e-4 - 1.146e-5 * T + 1.45e-7 * T * T - 6.5e-10 * T ** 3;
+  const p3 = 1 - 3.83e-5 * D + 4.9e-10 * D * D;
+  return { a1, f1, a2p2: a2 * p2, f2, a3p3: a3 * p3 };
+}
+function fgEval(k, fk) {
+  const ff = fk * fk, boric = k.f1 > 0 ? k.a1 * k.f1 * ff / (k.f1 * k.f1 + ff) : 0;
+  return boric + k.a2p2 * k.f2 * ff / (k.f2 * k.f2 + ff) + k.a3p3 * ff;
+}
+const sediment = (f, ntu) => M.KSED * Math.max(ntu, 0) * f / 1e3;
+const bwFor = fc => M.BW_MIN + (fc - M.FC_MIN) * (M.BW_MAX - M.BW_MIN) / (M.FC_MAX - M.FC_MIN);
+const q = (x, s) => Math.floor(x / s + 0.5) * s;
+const WPOW = { rect: 1, hann: 0.375, hamming: 0.3974, blackman: 0.3046 };
+const winPower = (w, a) => w === "tukey" ? 1 - 5 * a / 8 : WPOW[w];
+
+function selectBand(env, k) {
+  let fc = M.FC_MAX;
+  for (;;) {
+    const top = fc + bwFor(fc) / 2, alpha = fgEval(k, top / 1e3) + sediment(top, env.turbidity);
+    if (2 * alpha * env.range / 1e3 <= M.BUDGET) return { fc, alpha, limited: false };
+    if (fc - M.FC_STEP < M.FC_MIN - 1) return { fc, alpha, limited: true };
+    fc -= M.FC_STEP;
+  }
+}
+function tl2way(env, k, fc) {
+  const a = fgEval(k, fc / 1e3) + sediment(fc, env.turbidity);
+  return 2 * (20 * Math.log10(env.range) + a * env.range / 1e3);
+}
+function cornerTl(ntu, range) {
+  const e = { turbidity: ntu, range, temp: M.REF[0], salinity: M.REF[1], depth: M.REF[2] };
+  const k = fgCoef(e.temp, e.salinity, e.depth);
+  return tl2way(e, k, selectBand(e, k).fc);
+}
+M.TL_MIN = cornerTl(0, M.RANGE_MIN);
+M.TL_MAX = cornerTl(M.NTU_MAX, M.RANGE_MAX);
+
+function decide(env, mod, winMode) {
+  const k = fgCoef(env.temp, env.salinity, env.depth), c = soundSpeed(env.temp, env.salinity, env.depth);
+  const band = selectBand(env, k), fc = band.fc, bw = bwFor(fc), tl = tl2way(env, k, fc);
+  const demand = Math.min(Math.max((tl - M.TL_MIN) / (M.TL_MAX - M.TL_MIN), 0), 1);
+  const eDb = demand * M.ENERGY_SPAN, tBlind = M.BLIND * 2 * env.range / c;
+  const kind = mod === "auto" ? (tBlind < M.T_MIN ? "barker13" : "lfm") : mod;
+  const tEnergy = M.T_MIN * 10 ** (eDb / 10), tCap = Math.min(M.T_MAX, Math.max(tBlind, M.T_MIN));
+  let chip = 40e-6, duration;
+  if (kind === "barker13") { chip = q(Math.max(1 / bw, Math.min(tBlind, tEnergy) / 13), 0.5e-6); duration = 13 * chip; }
+  else duration = q(Math.min(tEnergy, tCap), 0.5e-6);
+  const left = eDb - 10 * Math.log10(Math.max(duration, 1e-9) / M.T_MIN);
+  const amplitude = q(Math.min(M.A_MAX, Math.max(M.A_MIN, M.A_MIN * 10 ** (Math.max(left, 0) / 20))), 1e-3);
+  let window, alpha = 0.2;
+  if (kind === "barker13") { window = "tukey"; alpha = 0.12; }
+  else window = winMode === "auto" ? (demand < 0.5 ? "hann" : "tukey") : winMode;
+  const spec = { kind, f0: fc, f1: fc, duration, window, tukey_alpha: alpha, amplitude, chip, rc_shaping: 0 };
+  let bEff;
+  if (kind === "lfm" || kind === "geometric") { spec.f0 = fc - bw / 2; spec.f1 = fc + bw / 2; bEff = bw; }
+  else if (kind === "barker13") { spec.rc_shaping = 0.2; bEff = 1 / chip; }
+  else bEff = 1 / duration;
+  const pri = q(Math.max(M.PRI_MIN, M.PRI_MARGIN * 2 * env.range / c), 1e-4);
+  const energy = amplitude ** 2 * duration * winPower(window, alpha), lightest = M.A_MIN ** 2 * M.T_MIN * WPOW.hann;
+  return { spec, pri, phys: {
+    c, fc, bw, alpha: band.alpha, abs2w: 2 * band.alpha * env.range / 1e3, tl, demand, limited: band.limited ? 1 : 0,
+    reach: M.BUDGET / (2 * band.alpha) * 1e3, res: c / (2 * bEff), blind: c * duration / 2, tb: bEff * duration,
+    energy_db: 10 * Math.log10(energy / lightest), avg_power_db: 10 * Math.log10((energy / pri) / (lightest / M.PRI_MIN)),
+  } };
+}
+
+// =====================================================================================
+// Pulse synthesis: a port of sonarscope.waveforms (used only by the simulator).
+// =====================================================================================
+const FS = 2e6;
+const BARKER13 = [1, 1, 1, 1, 1, -1, -1, 1, 1, -1, 1, -1, 1];
+function windowArray(name, n, a) {
+  const w = new Float64Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = n > 1 ? i / (n - 1) : 0, cs = v => Math.cos(2 * Math.PI * v);
+    if (name === "rect") w[i] = 1;
+    else if (name === "hann") w[i] = 0.5 - 0.5 * cs(x);
+    else if (name === "hamming") w[i] = 0.54 - 0.46 * cs(x);
+    else if (name === "blackman") w[i] = 0.42 - 0.5 * cs(x) + 0.08 * cs(2 * x);
+    else if (a <= 0) w[i] = 1;
+    else if (a >= 1) w[i] = 0.5 - 0.5 * cs(x);
+    else if (x < a / 2) w[i] = 0.5 - 0.5 * cs(x / a);
+    else if (x > 1 - a / 2) w[i] = 0.5 - 0.5 * cs((1 - x) / a);
+    else w[i] = 1;
+  }
+  return w;
+}
+function synthesize(s) {
+  const T = s.kind === "barker13" ? 13 * s.chip : s.duration, n = Math.round(T * FS);
+  const w = windowArray(s.window, n, s.tukey_alpha), out = new Uint8Array(n);
+  let code = null;
+  if (s.kind === "barker13") {
+    const seq = new Float64Array(n);
+    for (let i = 0; i < n; i++) seq[i] = BARKER13[Math.min(12, Math.floor(i / FS / s.chip))];
+    const k = Math.round(s.rc_shaping * s.chip * FS);
+    if (k >= 3) {
+      const ker = []; let sum = 0;
+      for (let m = 0; m < k; m++) { const v = 0.5 - 0.5 * Math.cos(2 * Math.PI * m / (k - 1)); ker.push(v); sum += v; }
+      code = new Float64Array(n);
+      for (let i = 0; i < n; i++) {
+        let acc = 0; const base = i + ((k - 1) >> 1);
+        for (let m = 0; m < k; m++) acc += ker[m] / sum * seq[Math.min(n - 1, Math.max(0, base - m))];
+        code[i] = acc;
+      }
+    } else code = seq;
+  }
+  const L = s.kind === "geometric" ? Math.log(s.f1 / s.f0) : 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / FS;
+    let ph;
+    if (s.kind === "lfm") ph = 2 * Math.PI * (s.f0 * t + (s.f1 - s.f0) / (2 * T) * t * t);
+    else if (s.kind === "geometric") ph = 2 * Math.PI * s.f0 * T / L * Math.expm1(L * t / T);
+    else ph = 2 * Math.PI * s.f0 * t;
+    let x = Math.sin(ph) * (code ? code[i] : 1) * s.amplitude * w[i];
+    out[i] = Math.min(255, Math.max(0, Math.round(128 + 127 * x)));
+  }
+  return out;
+}
+
+// =====================================================================================
+// DSP helpers
+// =====================================================================================
+function fft(re, im, inverse) {
+  const n = re.length;
+  for (let i = 1, j = 0; i < n; i++) {
+    let bit = n >> 1;
+    for (; j & bit; bit >>= 1) j ^= bit;
+    j ^= bit;
+    if (i < j) { let t = re[i]; re[i] = re[j]; re[j] = t; t = im[i]; im[i] = im[j]; im[j] = t; }
+  }
+  for (let len = 2; len <= n; len <<= 1) {
+    const ang = 2 * Math.PI / len * (inverse ? 1 : -1), half = len >> 1;
+    for (let k = 0; k < half; k++) {
+      const wr = Math.cos(ang * k), wi = Math.sin(ang * k);
+      for (let i = k; i < n; i += len) {
+        const j = i + half, vr = re[j] * wr - im[j] * wi, vi = re[j] * wi + im[j] * wr;
+        re[j] = re[i] - vr; im[j] = im[i] - vi; re[i] += vr; im[i] += vi;
+      }
+    }
+  }
+  if (inverse) for (let i = 0; i < n; i++) { re[i] /= n; im[i] /= n; }
+}
+const pow2 = n => 1 << Math.ceil(Math.log2(Math.max(2, n)));
+const toVolts = codes => Float64Array.from(codes, c => (c - 128) / 127 * 1.65);
+
+function spectrum(x) {
+  const N = Math.min(65536, pow2(Math.max(4 * x.length, 8192)));
+  const re = new Float64Array(N), im = new Float64Array(N);
+  re.set(x.subarray(0, Math.min(x.length, N)));
+  fft(re, im, false);
+  const mag = new Float64Array(N / 2);
+  let mx = 1e-30;
+  for (let k = 0; k < N / 2; k++) { mag[k] = Math.hypot(re[k], im[k]); mx = Math.max(mx, mag[k]); }
+  return { db: Float64Array.from(mag, m => 20 * Math.log10(m / mx + 1e-12)), df: FS / N };
+}
+// Envelope of the correlation of x with a replica (x itself, or x times a receive weighting).
+// Index 0 is zero delay; index N - m is a delay of -m samples.
+function correlate(x, weight) {
+  const n = Math.min(x.length, 32768), N = pow2(2 * n);
+  const xr = new Float64Array(N), xi = new Float64Array(N), yr = new Float64Array(N), yi = new Float64Array(N);
+  const w = weight ? windowArray(weight, n, 0.2) : null;
+  for (let i = 0; i < n; i++) { xr[i] = x[i]; yr[i] = w ? x[i] * w[i] : x[i]; }
+  fft(xr, xi, false); fft(yr, yi, false);
+  for (let k = 0; k < N; k++) {  // X * conj(Y), positive frequencies only -> analytic signal
+    const r = xr[k] * yr[k] + xi[k] * yi[k], i = xi[k] * yr[k] - xr[k] * yi[k], g = k === 0 || k === N / 2 ? 1 : (k < N / 2 ? 2 : 0);
+    xr[k] = g * r; xi[k] = g * i;
+  }
+  fft(xr, xi, true);
+  const env = new Float64Array(N);
+  let peak = 1e-30, kp = 0;
+  for (let k = 0; k < N; k++) { env[k] = Math.hypot(xr[k], xi[k]); if (env[k] > peak) { peak = env[k]; kp = k; } }
+  const db = Float64Array.from(env, v => 20 * Math.log10(v / peak + 1e-12));
+  // peak sidelobe: the highest point outside the main lobe (the peak down to its first minima)
+  const at = m => db[(kp + m + N) % N];
+  let lo = 0, hi = 0;
+  while (lo > -n + 1 && at(lo - 1) < at(lo)) lo--;
+  while (hi < n - 1 && at(hi + 1) < at(hi)) hi++;
+  let psl = -200;
+  for (let m = -n + 1; m < n; m++) if (m < lo || m > hi) psl = Math.max(psl, at(m));
+  return { db, N, kp, psl };
+}
+
+// =====================================================================================
+// Plotting
+// =====================================================================================
+const C = { grid: "#22384a", axis: "#5f7a8c", text: "#9fb3c2", accent: "#3fc1b5", orange: "#f2994a", warn: "#f2c94c", ink: "#e6edf2" };
+function setup(canvas) {
+  const r = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.round(r.width * dpr)); canvas.height = Math.max(1, Math.round(r.height * dpr));
+  const ctx = canvas.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, r.width, r.height);
+  return { ctx, w: r.width, h: r.height };
+}
+function niceTicks(lo, hi, n) {
+  const span = hi - lo, step0 = span / n, mag = 10 ** Math.floor(Math.log10(step0));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => span / s <= n) || 10 * mag;
+  const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+function frame(canvas, x0, x1, y0, y1, xlabel, ylabel) {
+  const g = setup(canvas), pad = { l: 48, r: 10, t: 8, b: 30 };
+  const box = { x: pad.l, y: pad.t, w: g.w - pad.l - pad.r, h: g.h - pad.t - pad.b };
+  const X = v => box.x + (v - x0) / (x1 - x0) * box.w, Y = v => box.y + (1 - (v - y0) / (y1 - y0)) * box.h;
+  const { ctx } = g;
+  ctx.font = "11px system-ui, sans-serif"; ctx.fillStyle = C.text; ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
+  for (const v of niceTicks(x0, x1, 7)) { ctx.beginPath(); ctx.moveTo(X(v), box.y); ctx.lineTo(X(v), box.y + box.h); ctx.stroke(); ctx.textAlign = "center"; ctx.fillText(String(v), X(v), box.y + box.h + 14); }
+  for (const v of niceTicks(y0, y1, 5)) { ctx.beginPath(); ctx.moveTo(box.x, Y(v)); ctx.lineTo(box.x + box.w, Y(v)); ctx.stroke(); ctx.textAlign = "right"; ctx.fillText(String(v), box.x - 6, Y(v) + 4); }
+  ctx.textAlign = "center"; ctx.fillText(xlabel, box.x + box.w / 2, g.h - 3);
+  ctx.save(); ctx.translate(11, box.y + box.h / 2); ctx.rotate(-Math.PI / 2); ctx.fillText(ylabel, 0, 0); ctx.restore();
+  return { ctx, box, X, Y, g };
+}
+function empty(canvas, msg) {
+  const { ctx, w, h } = setup(canvas);
+  ctx.fillStyle = C.text; ctx.font = "13px system-ui, sans-serif"; ctx.textAlign = "center"; ctx.fillText(msg, w / 2, h / 2);
+}
+function plotTime(x) {
+  const ms = x.length / FS * 1e3, f = frame(cTime, 0, ms, -1.8, 1.8, "time (ms)", "V (AC)"), { ctx, box } = f;
+  ctx.strokeStyle = C.accent; ctx.lineWidth = 1; ctx.beginPath();
+  const cols = Math.floor(box.w);
+  for (let c = 0; c < cols; c++) {  // min/max per pixel column
+    const a = Math.floor(c / cols * x.length), b = Math.max(a + 1, Math.floor((c + 1) / cols * x.length));
+    let lo = 9, hi = -9; for (let i = a; i < b; i++) { lo = Math.min(lo, x[i]); hi = Math.max(hi, x[i]); }
+    ctx.moveTo(box.x + c + 0.5, f.Y(hi)); ctx.lineTo(box.x + c + 0.5, f.Y(lo));
+  }
+  ctx.stroke();
+}
+function plotSpectrum(x, spec) {
+  const { db, df } = spectrum(x), f = frame(cSpec, 0, 1000, -70, 0, "frequency (kHz)", "dB"), { ctx, box } = f;
+  ctx.fillStyle = "rgba(242,153,74,0.12)";
+  const lo = Math.min(spec.f0, spec.f1) / 1e3, hi = Math.max(spec.f0, spec.f1) / 1e3;
+  if (hi > lo) ctx.fillRect(f.X(lo), box.y, f.X(hi) - f.X(lo), box.h);
+  ctx.strokeStyle = C.accent; ctx.lineWidth = 1.3; ctx.beginPath();
+  const kmax = Math.min(db.length, Math.floor(1e6 / df));
+  for (let k = 0; k < kmax; k++) { const px = f.X(k * df / 1e3), py = f.Y(Math.max(-70, db[k])); k ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
+  ctx.stroke();
+}
+function viridis(t) {  // compact perceptual map
+  const s = [[68, 1, 84], [59, 82, 139], [33, 145, 140], [94, 201, 98], [253, 231, 37]];
+  const p = Math.min(0.9999, Math.max(0, t)) * 4, i = Math.floor(p), u = p - i;
+  return s[i].map((c, j) => Math.round(c + (s[i + 1][j] - c) * u));
+}
+function plotSpectrogram(x) {
+  const ms = x.length / FS * 1e3, f = frame(cSgram, 0, ms, 0, 600, "time (ms)", "kHz"), { ctx, box } = f;
+  const nper = 128, nfft = 512, hop = Math.max(4, Math.floor((x.length - nper) / 400));
+  const frames = Math.max(1, Math.floor((x.length - nper) / hop) + 1), bins = Math.floor(600e3 / (FS / nfft));
+  const img = ctx.createImageData(frames, bins), hw = windowArray("hann", nper, 0);
+  const cols = [];
+  let mx = 1e-30;
+  for (let fr = 0; fr < frames; fr++) {
+    const re = new Float64Array(nfft), im = new Float64Array(nfft);
+    for (let i = 0; i < nper && fr * hop + i < x.length; i++) re[i] = x[fr * hop + i] * hw[i];
+    fft(re, im, false);
+    const m = new Float64Array(bins); for (let k = 0; k < bins; k++) { m[k] = Math.hypot(re[k], im[k]); mx = Math.max(mx, m[k]); }
+    cols.push(m);
+  }
+  for (let fr = 0; fr < frames; fr++) for (let k = 0; k < bins; k++) {
+    const db = 20 * Math.log10(cols[fr][k] / mx + 1e-12), [r, g, b] = viridis((db + 45) / 45), o = ((bins - 1 - k) * frames + fr) * 4;
+    img.data[o] = r; img.data[o + 1] = g; img.data[o + 2] = b; img.data[o + 3] = 255;
+  }
+  const off = document.createElement("canvas"); off.width = frames; off.height = bins; off.getContext("2d").putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = true; ctx.drawImage(off, box.x, box.y, box.w, box.h);
+}
+function plotMatched(x, spec) {
+  const dur = x.length / FS, spanUs = spec.kind === "barker13" ? dur * 1e6 : Math.min(dur * 1e6, 300);
+  const f = frame(cMf, -spanUs, spanUs, -60, 0, "delay (µs)", "dB"), { ctx, box } = f, m = Math.floor(spanUs * 1e-6 * FS);
+  const curves = [[correlate(x, null), C.orange, "matched"], [correlate(x, "hamming"), C.accent, "Hamming-weighted"]];
+  curves.forEach(([r, col, name], j) => {
+    ctx.strokeStyle = col; ctx.lineWidth = 1.2; ctx.beginPath();
+    for (let i = -m; i <= m; i++) { const px = f.X(i / FS * 1e6), py = f.Y(Math.max(-60, r.db[(r.kp + i + r.N) % r.N])); i === -m ? ctx.moveTo(px, py) : ctx.lineTo(px, py); }
+    ctx.stroke();
+    ctx.fillStyle = col; ctx.fillRect(box.x + 10, box.y + 10 + j * 17, 14, 3);
+    ctx.fillStyle = C.ink; ctx.font = "12px system-ui, sans-serif"; ctx.textAlign = "left";
+    ctx.fillText(`${name}: peak sidelobe ${r.psl.toFixed(1)} dB`, box.x + 30, box.y + 15 + j * 17);
+  });
+}
+function plotPhysics(env, t) {
+  const k = fgCoef(env.temp, env.salinity, env.depth), budget = M.BUDGET / (2 * env.range) * 1e3;
+  const top = Math.max(fgEval(k, 550) + sediment(550e3, env.turbidity), budget);
+  const ymax = Math.min(2000, Math.ceil(top * 1.25 / 50) * 50);
+  const f = frame(cPhys, 50, 550, 0, ymax, "frequency (kHz)", "dB/km"), { ctx, box } = f;
+  if (t && t.pulse) {
+    const lo = Math.min(t.pulse.f0, t.pulse.f1) / 1e3, hi = Math.max(t.pulse.f0, t.pulse.f1) / 1e3;
+    ctx.fillStyle = "rgba(63,193,181,0.16)"; ctx.fillRect(f.X(lo), box.y, Math.max(2, f.X(hi) - f.X(lo)), box.h);
+  }
+  const curve = (fn, color, dash) => {
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash(dash || []); ctx.beginPath();
+    for (let fk = 50; fk <= 550; fk += 2) { const py = f.Y(Math.min(ymax, fn(fk))); fk === 50 ? ctx.moveTo(f.X(fk), py) : ctx.lineTo(f.X(fk), py); }
+    ctx.stroke(); ctx.setLineDash([]);
+  };
+  curve(fk => fgEval(k, fk), C.text, [5, 4]);
+  curve(fk => sediment(fk * 1e3, env.turbidity), C.orange, [2, 3]);
+  curve(fk => fgEval(k, fk) + sediment(fk * 1e3, env.turbidity), C.accent);
+  ctx.strokeStyle = C.warn; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(box.x, f.Y(Math.min(ymax, budget))); ctx.lineTo(box.x + box.w, f.Y(Math.min(ymax, budget))); ctx.stroke();
+  ctx.font = "12px system-ui, sans-serif"; ctx.textAlign = "left";
+  const legend = [["seawater (Francois–Garrison)", C.text], ["suspended sediment", C.orange], ["total", C.accent],
+    [`budget ${M.BUDGET} dB over 2 × ${env.range.toFixed(0)} m = ${budget.toFixed(0)} dB/km`, C.warn]];
+  legend.forEach(([s, col], i) => { ctx.fillStyle = col; ctx.fillRect(box.x + 12, box.y + 10 + i * 18, 14, 3); ctx.fillStyle = C.ink; ctx.fillText(s, box.x + 32, box.y + 15 + i * 18); });
+}
+
+// =====================================================================================
+// Transports: Web Serial (a real board) and the simulator. Both deliver text lines.
+// =====================================================================================
+class SerialLink {
+  constructor(port) { this.port = port; this.onLine = () => {}; this.reading = false; }
+  async open(baud) {
+    await this.port.open({ baudRate: baud, bufferSize: 65536 });
+    this.baud = baud; this.reading = true;
+    this.reader = this.port.readable.getReader();
+    const dec = new TextDecoder(); let buf = "";
+    (async () => {
+      try {
+        for (;;) {
+          const { value, done } = await this.reader.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let i; while ((i = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, i).replace(/\r$/, ""); buf = buf.slice(i + 1); this.onLine(line); }
+        }
+      } catch (e) { /* port closed */ }
+      this.reading = false;
+    })();
+  }
+  async write(line) { const w = this.port.writable.getWriter(); await w.write(new TextEncoder().encode(line + "\n")); w.releaseLock(); }
+  async close() { try { await this.reader.cancel(); } catch (e) {} try { this.reader.releaseLock(); } catch (e) {} await this.port.close(); }
+}
+
+class SimLink {  // the firmware's adaptive mode and command set, in the browser
+  constructor() {
+    this.onLine = () => {};
+    this.env = { turbidity: 0, range: 60, temp: 25, salinity: 35, depth: 10 };
+    this.mod = "auto"; this.win = "auto"; this.host = false; this.seq = 0; this.telem = false; this.start = performance.now();
+    this.recompute();
+    this.timer = setInterval(() => this.telem && this.emit(), 200);
+  }
+  recompute() {
+    const d = decide(this.env, this.mod, this.win);
+    this.spec = d.spec; this.pri = d.pri; this.phys = d.phys; this.codes = synthesize(d.spec); this.seq++;
+  }
+  emit() {
+    const src = {}; for (const k in this.env) src[k] = "set";
+    const t = { v: 1, seq: this.seq, mode: this.host ? "host" : "adaptive", run: 1, mod: this.mod, win: this.win, fs: FS,
+      env: this.env, src, pulse: { ...this.spec, duration: this.codes.length / FS, samples: this.codes.length }, pri: this.pri,
+      stats: { pings: Math.floor((performance.now() - this.start) / 1000 / this.pri), synth_us: 0, underruns: 0 } };
+    if (!this.host) t.phys = this.phys;
+    this.onLine("@" + JSON.stringify(t));
+  }
+  reply(s) { setTimeout(() => this.onLine(s), 5); }
+  async write(line) {
+    const [cmd, ...rest] = line.trim().split(/\s+/), arg = rest.join(" "), C = cmd.toUpperCase();
+    if (C === "TELEM") { this.telem = /on/i.test(arg); return this.reply("OK"); }
+    if (C === "DUMP") return this.reply(`OK ${this.codes.length} ` + Array.from(this.codes, b => b.toString(16).padStart(2, "0")).join(""));
+    if (C === "ENV") {
+      if (/^(auto|clear)$/i.test(arg)) this.env = { turbidity: 0, range: 60, temp: 25, salinity: 35, depth: 10 };
+      for (const kv of rest) { const [k, v] = kv.split("="); if (k in this.env) this.env[k] = +v; }
+    } else if (C === "MOD") this.mod = arg.toLowerCase();
+    else if (C === "WIN") this.win = arg.toLowerCase();
+    else if (C === "PRESET") {
+      const p = PRESETS[arg]; if (!p) return this.reply("ERR unknown preset");
+      this.host = true; this.spec = p; this.codes = synthesize(p); this.pri = 0.02; this.seq++; this.emit(); return this.reply("OK");
+    } else if (C !== "DEMO") return this.reply("OK");
+    this.host = false; this.recompute(); this.emit();
+    this.reply("OK");
+  }
+  async close() { clearInterval(this.timer); }
+}
+
+const PRESETS = {
+  lfm_hi: { kind: "lfm", f0: 400e3, f1: 500e3, duration: 2e-3, window: "tukey", tukey_alpha: 0.2, amplitude: 1, chip: 40e-6, rc_shaping: 0 },
+  lfm_hi_hann: { kind: "lfm", f0: 400e3, f1: 500e3, duration: 2e-3, window: "hann", tukey_alpha: 0.2, amplitude: 1, chip: 40e-6, rc_shaping: 0 },
+  lfm_hi_rect: { kind: "lfm", f0: 400e3, f1: 500e3, duration: 2e-3, window: "rect", tukey_alpha: 0.2, amplitude: 1, chip: 40e-6, rc_shaping: 0 },
+  lfm_lo: { kind: "lfm", f0: 100e3, f1: 140e3, duration: 5e-3, window: "tukey", tukey_alpha: 0.2, amplitude: 1, chip: 40e-6, rc_shaping: 0 },
+  lfm_full: { kind: "lfm", f0: 100e3, f1: 500e3, duration: 2e-3, window: "tukey", tukey_alpha: 0.2, amplitude: 1, chip: 40e-6, rc_shaping: 0 },
+  geometric: { kind: "geometric", f0: 100e3, f1: 500e3, duration: 2e-3, window: "tukey", tukey_alpha: 0.2, amplitude: 1, chip: 40e-6, rc_shaping: 0 },
+  barker13: { kind: "barker13", f0: 300e3, f1: 300e3, duration: 520e-6, window: "tukey", tukey_alpha: 0.12, amplitude: 1, chip: 40e-6, rc_shaping: 0.2 },
+  tone_250k: { kind: "cw", f0: 250e3, f1: 250e3, duration: 5e-3, window: "tukey", tukey_alpha: 0.1, amplitude: 1, chip: 40e-6, rc_shaping: 0 },
+  clear_reef: { kind: "lfm", f0: 400e3, f1: 500e3, duration: 1e-3, window: "hann", tukey_alpha: 0.2, amplitude: 0.5, chip: 40e-6, rc_shaping: 0 },
+  muddy_estuary: { kind: "lfm", f0: 100e3, f1: 140e3, duration: 5e-3, window: "tukey", tukey_alpha: 0.2, amplitude: 1, chip: 40e-6, rc_shaping: 0 },
+};
+
+// =====================================================================================
+// App
+// =====================================================================================
+const $ = id => document.getElementById(id);
+const INPUTS = [
+  { key: "turbidity", label: "Turbidity", unit: "NTU", lo: 0, hi: 100, fmt: v => v.toFixed(0) },
+  { key: "range", label: "Required range", unit: "m", lo: 5, hi: 200, log: true, fmt: v => v.toFixed(v < 20 ? 1 : 0) },
+  { key: "temp", label: "Temperature", unit: "°C", lo: 0, hi: 35, fmt: v => v.toFixed(1) },
+  { key: "salinity", label: "Salinity", unit: "PSU", lo: 0, hi: 40, fmt: v => v.toFixed(1) },
+  { key: "depth", label: "Depth", unit: "m", lo: 0, hi: 300, fmt: v => v.toFixed(0) },
+];
+const toSlider = (inp, v) => inp.log ? Math.log(v / inp.lo) / Math.log(inp.hi / inp.lo) * 1000 : (v - inp.lo) / (inp.hi - inp.lo) * 1000;
+const fromSlider = (inp, s) => inp.log ? inp.lo * (inp.hi / inp.lo) ** (s / 1000) : inp.lo + (inp.hi - inp.lo) * s / 1000;
+
+let link = null, lastT = null, lastSeq = -1, codes = null, model = null, dumpTimer = null, busy = Promise.resolve();
+const pending = [];  // resolvers waiting for OK/ERR replies, in order
+const touched = {};  // slider -> time of last user move (telemetry does not overwrite it meanwhile)
+
+function log(s) { const el = $("log"); el.textContent += s + "\n"; if (el.textContent.length > 20000) el.textContent = el.textContent.slice(-15000); el.scrollTop = el.scrollHeight; }
+
+function onLine(line) {
+  if (line.startsWith("@")) { try { onTelemetry(JSON.parse(line.slice(1))); } catch (e) {} return; }
+  if (line.startsWith("OK") || line.startsWith("ERR")) {
+    const r = pending.shift(); if (r) r(line);
+    log(line.length > 160 ? line.slice(0, 120) + ` … (${line.length} chars)` : line); return;
+  }
+  if (line.trim()) log(line);
+}
+function send(cmd, timeout = 8000) {  // one command at a time, resolves with its reply line
+  const p = busy.then(() => new Promise(res => {
+    if (!link) return res("ERR not connected");
+    let done = false;
+    const finish = v => { if (!done) { done = true; res(v); } };
+    pending.push(finish);
+    setTimeout(() => { const i = pending.indexOf(finish); if (i >= 0) pending.splice(i, 1); finish("ERR timeout"); }, timeout);
+    if (!cmd.startsWith("DUMP")) log("> " + cmd);
+    link.write(cmd).catch(e => finish("ERR " + e.message));
+  }));
+  busy = p.catch(() => {});
+  return p;
+}
+
+function onTelemetry(t) {
+  lastT = t;
+  for (const inp of INPUTS) {
+    if (performance.now() - (touched[inp.key] || 0) < 1500) continue;
+    const v = t.env[inp.key]; $("s_" + inp.key).value = toSlider(inp, v); $("v_" + inp.key).textContent = inp.fmt(v);
+    const s = $("src_" + inp.key); s.textContent = t.src[inp.key]; s.className = "src " + t.src[inp.key];
+  }
+  document.querySelectorAll("#mods button").forEach(b => b.classList.toggle("on", b.dataset.v === t.mod && t.mode !== "host"));
+  document.querySelectorAll("#wins button").forEach(b => b.classList.toggle("on", b.dataset.v === t.win && t.mode !== "host"));
+  renderDecision(t);
+  if (t.seq !== lastSeq) {  // new pulse: draw the model now, then check it against the board's own codes
+    lastSeq = t.seq;
+    model = synthesize(t.pulse); codes = model;
+    const sim = link instanceof SimLink;
+    $("tsrc").textContent = sim ? "simulated DAC output, V" : "model of the pulse, V · reading it back from the ESP32…";
+    drawWaveforms();
+    if (!sim) { clearTimeout(dumpTimer); dumpTimer = setTimeout(fetchCodes, 800); }
+  }
+}
+
+async function fetchCodes() {
+  const seq = lastSeq, r = await send("DUMP", 20000), m = /^OK (\d+) ([0-9a-f]*)$/.exec(r);
+  if (!m || seq !== lastSeq) return;
+  const hex = m[2], out = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(hex.substr(2 * i, 2), 16);
+  let differ = 0, worst = 0;
+  const comparable = model && model.length === out.length;
+  if (comparable) for (let i = 0; i < out.length; i++) { const d = Math.abs(out[i] - model[i]); if (d) differ++; worst = Math.max(worst, d); }
+  codes = out;
+  $("tsrc").textContent = !comparable ? `read back from the ESP32 (${out.length} samples), V`
+    : worst === 0 ? `read back from the ESP32: identical to the model, ${out.length} samples`
+    : worst === 1 ? `read back from the ESP32: within 1 code of the model (${differ} of ${out.length} samples)`
+    : `read back from the ESP32: ${differ} samples differ from the model (up to ${worst} codes)`;
+  drawWaveforms();
+}
+
+function drawWaveforms() {
+  if (!codes || !lastT) return;
+  const x = toVolts(codes);
+  plotTime(x); plotSpectrum(x, lastT.pulse); plotSpectrogram(x); plotMatched(x, lastT.pulse);
+}
+
+function kpi(label, value, unit) { return `<div class="kpi"><div class="k">${label}</div><div class="v">${value} <small>${unit || ""}</small></div></div>`; }
+function renderDecision(t) {
+  const p = t.pulse, ph = t.phys, kHz = v => (v / 1e3).toFixed(1);
+  const band = p.kind === "lfm" || p.kind === "geometric" ? `${kHz(p.f0)}–${kHz(p.f1)}` : kHz(p.f0);
+  const e = t.env;
+  $("zone").textContent = t.mode === "host" ? "Fixed test pulse" : e.turbidity < 10 ? "Clear water" : e.turbidity < 50 ? "Coastal water" : "Turbid / muddy water";
+  $("why").innerHTML = t.mode === "host" ? "Host mode: the environment is ignored until you move a slider." :
+    `${e.turbidity.toFixed(0)} NTU, ${e.range.toFixed(0)} m, ${e.temp.toFixed(1)} °C, ${e.salinity.toFixed(1)} PSU, ${e.depth.toFixed(0)} m deep` +
+    (ph && ph.limited ? ` · <span class="badge-warn">range-limited: this water reaches about ${ph.reach.toFixed(0)} m in budget</span>` : "");
+  let h = kpi("Modulation", p.kind.toUpperCase().replace("BARKER13", "BARKER-13"), p.window)
+    + kpi(p.kind === "lfm" || p.kind === "geometric" ? "Band" : "Carrier", band, "kHz")
+    + kpi("Pulse length", (p.duration * 1e3).toFixed(2), "ms") + kpi("Amplitude", p.amplitude.toFixed(2), "of full scale")
+    + kpi("Ping interval", (t.pri * 1e3).toFixed(1), "ms");
+  if (ph) h += kpi("Range resolution", (ph.res * 100).toFixed(1), "cm") + kpi("Blind zone", ph.blind.toFixed(2), "m")
+    + kpi("Pulse compression", (10 * Math.log10(Math.max(ph.tb, 1))).toFixed(1), "dB") + kpi("Sound speed", ph.c.toFixed(1), "m/s")
+    + kpi("Absorption, 2-way", ph.abs2w.toFixed(1), `dB (budget ${M.BUDGET})`) + kpi("Transmission loss", ph.tl.toFixed(0), "dB 2-way")
+    + kpi("Energy per ping", "+" + ph.energy_db.toFixed(1), "dB vs lightest") + kpi("Average power", (ph.avg_power_db >= 0 ? "+" : "") + ph.avg_power_db.toFixed(1), "dB vs lightest");
+  h += kpi("Pings sent", t.stats.pings, t.stats.underruns ? `${t.stats.underruns} underruns` : "0 underruns");
+  $("kpis").innerHTML = h;
+  plotPhysics(e, t);
+}
+
+function buildControls() {
+  $("sliders").innerHTML = INPUTS.map(i => `<div class="slider"><div class="row"><label for="s_${i.key}">${i.label}<span id="src_${i.key}" class="src">—</span></label>
+    <span class="val"><span id="v_${i.key}">—</span> ${i.unit}</span></div><input type="range" id="s_${i.key}" min="0" max="1000" step="1"></div>`).join("");
+  const timers = {};
+  for (const inp of INPUTS) {
+    const el = $("s_" + inp.key);
+    el.addEventListener("input", () => {
+      const v = fromSlider(inp, +el.value); touched[inp.key] = performance.now(); $("v_" + inp.key).textContent = inp.fmt(v);
+      clearTimeout(timers[inp.key]);
+      timers[inp.key] = setTimeout(() => send(`ENV ${inp.key}=${Math.min(inp.hi, Math.max(inp.lo, v)).toFixed(2)}`), 120);
+    });
+  }
+  const seg = (id, values, cmd) => {
+    $(id).innerHTML = values.map(v => `<button data-v="${v}">${v === "barker13" ? "Barker-13" : v === "lfm" ? "LFM" : v === "cw" ? "CW" : v[0].toUpperCase() + v.slice(1)}</button>`).join("");
+    $(id).querySelectorAll("button").forEach(b => b.onclick = () => send(`${cmd} ${b.dataset.v}`));
+  };
+  seg("mods", ["auto", "lfm", "geometric", "barker13", "cw"], "MOD");
+  seg("wins", ["auto", "rect", "tukey", "hann", "hamming", "blackman"], "WIN");
+  $("preset").innerHTML = Object.keys(PRESETS).map(k => `<option>${k}</option>`).join("");
+  $("loadPreset").onclick = () => send("PRESET " + $("preset").value);
+  $("adaptive").onclick = () => send("DEMO");
+  $("pots").onclick = () => send("ENV AUTO");
+}
+
+async function disconnect() { if (link) { try { await link.close(); } catch (e) {} } link = null; pending.splice(0).forEach(r => r("ERR disconnected")); }
+
+async function connectBoard() {
+  if (!("serial" in navigator)) { alert("Web Serial needs Chrome or Edge, on https:// or http://localhost (see dashboard/README.md)."); return; }
+  let port;
+  try { port = await navigator.serial.requestPort(); } catch (e) { return; }
+  await disconnect();
+  const l = new SerialLink(port); l.onLine = onLine; await l.open(115200); link = l;
+  $("mode").textContent = "connecting…"; $("mode").className = "pill";
+  log("# opening the port resets most ESP32 boards: waiting for it to boot");
+  await new Promise(res => setTimeout(res, 1800));
+  let r = await send("TELEM ON", 3000);
+  if (!r.startsWith("OK")) r = await send("TELEM ON", 3000);
+  $("mode").textContent = r.startsWith("OK") ? "live · ESP32" : "no reply from board";
+  $("mode").className = r.startsWith("OK") ? "pill live" : "pill";
+}
+
+async function simulate() {
+  await disconnect();
+  const s = new SimLink(); s.onLine = onLine; link = s;
+  $("mode").textContent = "simulated · no board"; $("mode").className = "pill sim";
+  log("# simulator: the same physics model and waveform synthesis, running in the browser");
+  await send("TELEM ON");
+}
+
+buildControls();
+$("connect").onclick = connectBoard;
+$("simulate").onclick = simulate;
+window.addEventListener("resize", () => { drawWaveforms(); if (lastT) plotPhysics(lastT.env, lastT); });
+requestAnimationFrame(() => { for (const c of [cTime, cSpec, cSgram, cMf, cPhys]) if (!codes) empty(c, "no data yet"); });
+if (new URLSearchParams(location.search).has("sim")) simulate();
+</script>
+</body>
+</html>
