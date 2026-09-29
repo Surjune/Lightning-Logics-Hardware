@@ -1,0 +1,29 @@
+Ref,Qty,Value,Description,Package,Alternative,Notes
+U1,1,OPA4350UA,"Quad rail-to-rail I/O op-amp, 38 MHz GBW, 22 V/us, 2.7-5.5 V",SOIC-14,MCP6294-E/P (PDIP-14),"OPA4350 needs a SOIC-14 to DIP-14 adapter on a breadboard. MCP6294 plugs straight in but slew-limits at full amplitude above about 350 kHz"
+ADP1,1,SOIC-14 to DIP-14 adapter,Breakout board for U1,-,-,Only with OPA4350
+R1,1,1.30 kOhm,"Metal film, 1 %",0.25 W axial,1.3 kOhm (E24),Stage 1
+R2,1,511 Ohm,"Metal film, 1 %",0.25 W axial,510 Ohm (E24),Stage 1
+R3,1,1.74 kOhm,"Metal film, 1 %",0.25 W axial,1.8 kOhm (E24),"Stage 2; use the E24 values for R3 and R4 together"
+R4,1,715 Ohm,"Metal film, 1 %",0.25 W axial,680 Ohm (E24),Stage 2
+R5,1,100 kOhm,"Metal film, 1 %",0.25 W axial,-,Driver input bias to VMID
+R6,1,10 kOhm,"Metal film, 1 %",0.25 W axial,-,Driver gain (to VMID)
+R7,1,5.1 kOhm,"Metal film, 1 %",0.25 W axial,-,Driver gain (feedback); gain = 1 + R7/R6 = 1.51
+R8,1,100 Ohm,"Metal film, 1 %",0.25 W axial,-,Output isolation (cable / transducer capacitance)
+R9,1,1 kOhm,"Metal film, 1 %",0.25 W axial,-,Dummy load standing in for the transducer
+R10,1,10 kOhm,"Metal film, 1 %",0.25 W axial,-,VMID divider (top)
+R11,1,10 kOhm,"Metal film, 1 %",0.25 W axial,-,VMID divider (bottom)
+C1,1,390 pF,"Ceramic C0G/NP0, 5 %, 50 V",radial,-,"Stage 1 feedback capacitor: goes to the U1B OUTPUT, not to ground"
+C2,1,270 pF,"Ceramic C0G/NP0, 5 %, 50 V",radial,-,Stage 1 capacitor to ground
+C3,1,680 pF,"Ceramic C0G/NP0, 5 %, 50 V",radial,-,"Stage 2 feedback capacitor: goes to the U1C OUTPUT, not to ground"
+C4,1,82 pF,"Ceramic C0G/NP0, 5 %, 50 V",radial,-,"Stage 2 capacitor to ground; mount right at U1 pin 10"
+C5,1,1 uF,"Ceramic X7R or film, 16 V or more",radial,-,Driver input coupling
+C6,1,10 uF,"Electrolytic 16 V (or X7R ceramic)",radial,-,"Output coupling; + side toward R8"
+C7,1,10 uF,"Electrolytic 16 V (or X7R ceramic)",radial,-,"VMID filter; + side to VMID"
+C8,1,100 nF,"Ceramic X7R, 50 V",radial,-,VMID decoupling
+C9,1,100 nF,"Ceramic X7R, 50 V",radial,-,"U1 supply decoupling, at pin 4"
+C10,1,10 uF,"Electrolytic 16 V",radial,-,"Bulk supply; + side to +5V"
+RV1,1,10 kOhm,Linear potentiometer,panel or trimmer,5-50 kOhm,Turbidity input (GPIO34)
+RV2,1,10 kOhm,Linear potentiometer,panel or trimmer,5-50 kOhm,Reach input (GPIO35)
+-,1,ESP32 DevKit (38-pin),ESP32-WROOM-32 development board,-,-,Already on hand
+-,1,Breadboard,830-point solderless breadboard,-,-,
+-,1 set,Jumper wires,Male-male and male-female,-,-,
