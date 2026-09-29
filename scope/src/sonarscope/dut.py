@@ -12,6 +12,9 @@ drives the firmware's test mode over a serial line with a small text protocol:
                                                   next ping boundary) and raise the T0 marker GPIO
                                                   at the moment of the request
     <- OK | ERR <message>                         one reply line per command
+
+Other lines from the firmware (``#`` log lines, boot messages) are skipped. Opening the
+port resets most ESP32 boards, so the link waits for the boot to finish first.
 """
 
 from __future__ import annotations
@@ -55,18 +58,25 @@ class ManualDut:
 
 
 class SerialDut:
-    def __init__(self, port: str | None = None, baud: int = 115200, timeout: float = 2.0, link=None):
+    def __init__(self, port: str | None = None, baud: int = 115200, timeout: float = 2.0, link=None,
+                 boot_wait: float = 2.0):
         if link is None:
             try:
                 import serial  # pyserial
             except ImportError as e:  # pragma: no cover - depends on environment
                 raise DutError("SerialDut needs pyserial: pip install 'sonarscope[serial]'") from e
             link = serial.Serial(port, baud, timeout=timeout)
+            time.sleep(boot_wait)  # DTR/RTS on open resets the board
+            link.reset_input_buffer()
         self.link = link
 
     def command(self, line: str) -> str:
         self.link.write((line + "\n").encode())
-        reply = self.link.readline().decode(errors="replace").strip()
+        reply = ""
+        for _ in range(100):  # skip log lines; an empty read is a timeout
+            reply = self.link.readline().decode(errors="replace").strip()
+            if not reply or reply.startswith(("OK", "ERR")):
+                break
         if not reply.startswith("OK"):
             raise DutError(f"{line.split()[0]} failed: {reply or 'no reply'}")
         return reply

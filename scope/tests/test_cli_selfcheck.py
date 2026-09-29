@@ -75,6 +75,6 @@ def test_readme_documents_every_criterion():
     from pathlib import Path
 
     from sonarscope import thresholds as th
-    readme = (Path(__file__).parents[1] / "README.md").read_text()
+    readme = (Path(__file__).parents[1] / "README.md").read_text(encoding="utf-8")
     missing = [m for m in th.all_criteria() if f"`{m}`" not in readme and m not in readme]
     assert not missing, f"criteria missing from README: {missing}"

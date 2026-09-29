@@ -295,6 +295,12 @@ def test_serial_dut_protocol():
     bad = SerialDut(link=FakeLink([b"ERR busy\n"]))
     with pytest.raises(Exception):
         bad.prepare(PLAN["idle"])
+    # firmware log lines and boot noise before the reply are skipped
+    chatty = SerialDut(link=FakeLink([b"ets Jun  8 2016 00:22:57\n", b"# ENV turbidity 0.20\n", b"OK\n"]))
+    chatty.prepare(PLAN["idle"])
+    silent = SerialDut(link=FakeLink([b""]))
+    with pytest.raises(Exception):
+        silent.prepare(PLAN["idle"])
 
 
 def test_manual_dut_prompts():
