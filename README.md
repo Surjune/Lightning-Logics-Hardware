@@ -13,7 +13,7 @@ bandwidth, pulse length and amplitude to environmental inputs.
 | Path | Contents |
 |---|---|
 | [`scope/`](scope/) | `sonarscope` — oscilloscope / FFT validation toolkit: waveform reference models, transmit-chain simulator, capture I/O, measurement suite, pass/fail thresholds, instrument backends, regression tracking |
-| `firmware/` | ESP32 transmitter firmware (planned) |
+| [`firmware/`](firmware/) | ESP32 transmitter firmware (Arduino): DMA-fed DAC, LFM / geometric / Barker-13 / CW synthesis, pot-driven adaptation, serial test-mode protocol |
 | `hardware/` | Analog front-end schematics, BOM, enclosure (planned) |
 
 ## Quick start (validation toolkit)
