@@ -76,8 +76,8 @@ What the model decides, for a few kinds of water (25 °C seawater):
 | Muddy, 100 NTU | 200 m | LFM 100-140 kHz, 5 ms, full power | 326 ms | 1.9 cm |
 | Harbour, 5 m range | 5 m | Barker-13 on 450 kHz, 0.65 ms | 20 ms | 3.8 cm |
 
-In short: **the turbidity knob moves the frequency band, and the range knob sets the energy and
-ping rate.**
+In short: **the turbidity knob moves the frequency band, and the range setting sets the energy and
+ping rate.** Range comes from `ENV range=...` or from an optional second pot.
 
 ### The waveforms
 
@@ -148,17 +148,19 @@ uA741 will not work at 500 kHz.
 
    ```
    # sonar_tx ready: GPIO25 DAC out @ 2 MSPS, T0 marker on GPIO27
-   # adaptive mode: turbidity pot GPIO34, range pot GPIO35 (see config.h); BOOT = next modulation, hold = next window
+   # adaptive mode, pots: turbidity GPIO34 (the rest: defaults or ENV, see config.h); BOOT = next modulation, hold = next window
    # type HELP for the serial commands
-   # ENV 0 NTU, 5 m, 25.0 C, 35.0 PSU, 10 m deep -> barker13 on 450.0 kHz, chip 50.0 us, 0.65 ms, amp 0.62, tukey, PRI 20.0 ms | res 3.8 cm | synth 4.33 ms
+   # ENV 0 NTU, 60 m, 25.0 C, 35.0 PSU, 10 m deep -> lfm 388.6-486.4 kHz, 4.51 ms, amp 0.50, tukey, PRI 97.8 ms | res 0.8 cm | synth 7.49 ms
    ```
 
    The last line is the first decision: the environment on the left, the chosen ping on the right.
-   With no pots connected the two inputs read 0 (clear water, 5 m), which gives a short Barker-13
-   ping. Type `ENV turbidity=0 range=60` and the board answers with a new decision:
+   By default only the turbidity pot (G34) is read, and range stays at 60 m. Until the pot is wired
+   (Step 2) G34 floats, so its NTU number may differ from this line or wander; that is expected.
+   Type `ENV turbidity=100 range=200` (muddy water, long range) and the board answers with a new
+   decision. `ENV AUTO` hands control back to the pot.
 
    ```
-   # ENV 0 NTU, 60 m, 25.0 C, 35.0 PSU, 10 m deep -> lfm 388.6-486.4 kHz, 4.51 ms, amp 0.50, tukey, PRI 97.8 ms | res 0.8 cm | synth 7.41 ms
+   # ENV 100 NTU, 200 m, 25.0 C, 35.0 PSU, 10 m deep -> lfm 100.0-140.0 kHz, 5.00 ms, amp 1.00, tukey, PRI 325.8 ms | res 1.9 cm | range-limited | synth 8.20 ms
    ```
 
 ### Step 2: wire the knobs (the "sensors")
@@ -169,12 +171,16 @@ A potentiometer has three pins. The two outer pins go to **3V3** and **GND**; th
 | Pot | Middle pin to | Outer pins to | Stands in for |
 |---|---|---|---|
 | RV1 | **G34** | 3V3 and GND | turbidity, 0-100 NTU |
-| RV2 | **G35** | 3V3 and GND | required range, 5-200 m |
+| RV2 (optional) | **G35** | 3V3 and GND | required range, 5-200 m |
 
 Rules: use **3V3, never 5V** (the ADC pins take 3.3 V at most), and never connect 3V3 straight to GND.
-With only one pot, tie G35 to GND with a jumper, because a floating pin reads noise.
-Temperature (G32), salinity (G33) and depth (SP / GPIO36) can have pots too: set their
-`*_WIRED` flags to 1 in [config.h](firmware/sonar_tx/config.h).
+Only the middle pin may go to G34: a pot with GND on its middle pin reads 0 and can short 3V3 to
+GND at the end of its travel.
+
+One pot (RV1) is enough, and it is the default: range stays at 60 m, or set it with
+`ENV range=...`. RV2 and pots for temperature (G32), salinity (G33) and depth (SP / GPIO36) are
+optional: set their `*_WIRED` flags to 1 in [config.h](firmware/sonar_tx/config.h). Keep a flag at 0
+for any pin with nothing connected, because a floating pin reads noise.
 
 Turn RV1 and the Serial Monitor prints a new `# ENV ...` line each time the decision changes.
 

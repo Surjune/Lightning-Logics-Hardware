@@ -626,7 +626,15 @@ void setup() {
     }
   }
   Serial.println("# sonar_tx ready: GPIO25 DAC out @ 2 MSPS, T0 marker on GPIO27");
-  Serial.println("# adaptive mode: turbidity pot GPIO34, range pot GPIO35 (see config.h); BOOT = next modulation, hold = next window");
+  // list only the pots that config.h enables, so the log matches the wiring
+  Serial.print("# adaptive mode, pots:");
+  int pots = 0;
+  for (const EnvInput &in : INPUTS) {
+    if (!in.wired) continue;
+    Serial.printf("%s %s GPIO%d", pots++ ? "," : "", in.key, in.pin);
+  }
+  Serial.println(pots ? " (the rest: defaults or ENV, see config.h); BOOT = next modulation, hold = next window"
+                      : " none (all inputs: defaults or ENV, see config.h); BOOT = next modulation, hold = next window");
   Serial.println("# type HELP for the serial commands");
   enterAdaptiveMode();
 }

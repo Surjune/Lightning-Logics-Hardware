@@ -77,7 +77,7 @@ U1 pins use the standard quad op-amp pinout: 1 OUTA, 2 −INA, 3 +INA, 4 V+, 5 +
 | 3V3 | ESP32 3V3 pin, one end of RV1 and of RV2 | |
 | GND | ESP32 GND, U1 pin 11, C2, C4, C7 (−), C8, C9, C10 (−), R9, R11, other ends of RV1 and RV2, scope ground clips | |
 | GPIO34 | RV1 wiper (turbidity) | |
-| GPIO35 | RV2 wiper (reach) | |
+| GPIO35 | RV2 wiper (reach) | optional: set `RANGE_POT_WIRED 1` in config.h |
 | GPIO27 | T0 marker | TP5 → scope CH2 |
 
 ## Building it on a breadboard

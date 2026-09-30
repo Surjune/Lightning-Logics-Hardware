@@ -27,7 +27,7 @@ constexpr int PIN_POT_TEMP = 32;       // 0-35 degC
 constexpr int PIN_POT_SALINITY = 33;   // 0-40 PSU
 constexpr int PIN_POT_DEPTH = 36;      // 0-300 m (board label SP / VP)
 #define TURBIDITY_POT_WIRED 1
-#define RANGE_POT_WIRED 1
+#define RANGE_POT_WIRED 0
 #define TEMP_POT_WIRED 0
 #define SALINITY_POT_WIRED 0
 #define DEPTH_POT_WIRED 0
