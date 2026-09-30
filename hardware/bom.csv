@@ -23,7 +23,7 @@ C8,1,100 nF,"Ceramic X7R, 50 V",radial,-,VMID decoupling
 C9,1,100 nF,"Ceramic X7R, 50 V",radial,-,"U1 supply decoupling, at pin 4"
 C10,1,10 uF,"Electrolytic 16 V",radial,-,"Bulk supply; + side to +5V"
 RV1,1,10 kOhm,Linear potentiometer,panel or trimmer,5-50 kOhm,Turbidity input (GPIO34)
-RV2,1,10 kOhm,Linear potentiometer,panel or trimmer,5-50 kOhm,Reach input (GPIO35)
+RV2,1,10 kOhm,Linear potentiometer,panel or trimmer,5-50 kOhm,Reach input (GPIO35); optional: set RANGE_POT_WIRED 1
 -,1,ESP32 DevKit (38-pin),ESP32-WROOM-32 development board,-,-,Already on hand
 -,1,Breadboard,830-point solderless breadboard,-,-,
 -,1 set,Jumper wires,Male-male and male-female,-,-,

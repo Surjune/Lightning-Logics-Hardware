@@ -33,7 +33,7 @@ physics model.
 | GND | scope ground clip | |
 | GPIO27 (G27) | scope CH2 (optional) | T0 marker: steps to 3.3 V for 200 ms at every change |
 | GPIO34 (G34) | pot wiper: **turbidity**, 0-100 NTU | wired by default |
-| GPIO35 (G35) | pot wiper: **required range**, 5-200 m (log scale) | wired by default |
+| GPIO35 (G35) | pot wiper: **required range**, 5-200 m (log scale) | set `RANGE_POT_WIRED 1` (off by default: range stays at 60 m) |
 | GPIO32 (G32) | pot wiper: temperature, 0-35 °C | set `TEMP_POT_WIRED 1` in [config.h](sonar_tx/config.h) |
 | GPIO33 (G33) | pot wiper: salinity, 0-40 PSU | set `SALINITY_POT_WIRED 1` |
 | GPIO36 (SP) | pot wiper: depth, 0-300 m | set `DEPTH_POT_WIRED 1` |
@@ -74,8 +74,8 @@ Some decisions, all at 25 °C, 35 PSU:
 | 100 NTU | 200 m | LFM 100-140 kHz, 5 ms, 1.00, Tukey (range-limited) | 326 ms | 1.9 cm |
 | 10 NTU | 5 m | Barker-13 on 450 kHz, 0.65 ms | 20 ms | 3.8 cm |
 
-So the turbidity knob mainly moves the band and the range knob mainly sets energy and
-ping rate. Each change prints a line such as
+So the turbidity knob mainly moves the band and the range setting (`ENV range=...`, or the
+optional G35 pot) mainly sets energy and ping rate. Each change prints a line such as
 
 ```
 # ENV 30 NTU, 60 m, 25.0 C, 35.0 PSU, 10 m deep -> lfm 193.2-251.8 kHz, 4.42 ms, amp 0.50, hann, PRI 97.8 ms | res 1.3 cm | synth 6.49 ms
