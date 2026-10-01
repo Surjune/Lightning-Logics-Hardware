@@ -34,10 +34,9 @@ low-frequency chirp that cuts through mud, without any manual re-tuning.
 8. [Reproduce the demo](#8-reproduce-the-demo)
 9. [Repository layout](#9-repository-layout)
 10. [Verification and tools](#10-verification-and-tools)
-11. [Status and roadmap](#11-status-and-roadmap)
-12. [Troubleshooting](#12-troubleshooting)
-13. [Glossary](#13-glossary)
-14. [References](#14-references)
+11. [Troubleshooting](#11-troubleshooting)
+12. [Glossary](#12-glossary)
+13. [References](#13-references)
 
 ---
 
@@ -293,8 +292,7 @@ The **prototype runs on an ESP32 DevKit**, because its built-in DAC can be drive
 Everything in [section 5](#5-evidence-measured-on-the-oscilloscope) is measured on the ESP32.
 
 The firmware is plain C/C++ built around one pattern, **hardware timer → DMA → DAC**, which maps
-directly onto STM32 timers and DMA. Porting it is the next step on the
-[roadmap](#11-status-and-roadmap).
+directly onto STM32 timers and DMA, so porting it to STM32 is the next step.
 
 ---
 
@@ -414,20 +412,7 @@ Use your board's COM port (or `/dev/ttyUSB0` on Linux). The browser dashboard in
 [`dashboard/`](dashboard/) shows the same decisions live, with the spectrum and spectrogram of the
 pulse.
 
-## 11. Status and roadmap
-
-| Item | Status |
-|---|---|
-| Firmware: synthesis, DMA streaming, physics-based adaptation | ✅ working on hardware |
-| Oscilloscope validation of the adaptation | ✅ measured (section 5) |
-| Analog front end (filter + op-amp) | 🟡 designed and simulated; breadboard build next |
-| Enclosure: 3D-printed AUV payload pod | 🟡 designed ([lightninglogics.me](https://www.lightninglogics.me/)) |
-| STM32 port of the firmware | ⏳ next |
-| Power-consumption measurement | ⏳ planned |
-| Real turbidity / CTD sensors on the same ADC inputs | ⏳ planned |
-| Power amplifier and matching network for a piezo transducer | ⏳ planned |
-
-## 12. Troubleshooting
+## 11. Troubleshooting
 
 | Symptom | Fix |
 |---|---|
@@ -439,7 +424,7 @@ pulse.
 | Dial reading stuck at 0 or 100 | the middle (wiper) leg is not on G34, or the 3V3 / GND leg is loose |
 | Small spikes on the waveform | normal at the bare DAC; the analog filter removes them |
 
-## 13. Glossary
+## 12. Glossary
 
 | Term | Meaning |
 |---|---|
@@ -455,7 +440,7 @@ pulse.
 | Blind zone | the distance covered while the pulse is still being sent |
 | PRI | ping repetition interval: the time between pings |
 
-## 14. References
+## 13. References
 
 * R. J. Urick, *Principles of Underwater Sound*, 3rd ed., McGraw-Hill, 1983.
 * K. V. Mackenzie, "Nine-term equation for sound speed in the oceans," *J. Acoust. Soc. Am.* 70(3), 1981.
