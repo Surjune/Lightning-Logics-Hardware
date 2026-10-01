@@ -1,4 +1,4 @@
-// Adaptive software-defined sonar transmitter (PS 26058), ESP32 + built-in DAC.
+// Adaptive software-defined sonar transmitter, ESP32 + built-in DAC.
 //
 // Output: GPIO25 (DAC channel 0), 2 MSPS, fed by DMA. Two ways to drive it:
 //

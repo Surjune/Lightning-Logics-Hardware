@@ -1,14 +1,14 @@
 # ESP32 transmitter firmware
 
-Arduino sketch for the software-defined sonar transmitter (PS 26058). It synthesises
+Arduino sketch for the software-defined sonar transmitter. It synthesises
 LFM chirps, geometric sweeps, Barker-13 phase-coded pulses and CW tones, streams them
 by DMA to the ESP32's built-in 8-bit DAC at 2 MSPS on **GPIO25**, and adapts band,
 pulse length, amplitude, window, modulation and ping interval to the water through a
 physics model.
 
-## How it meets the problem statement
+## How it meets the requirements
 
-| PS requirement | Implementation |
+| Requirement | Implementation |
 |---|---|
 | Hardware timers + DMA, CPU not stalled | IDF `dac_continuous` driver: I2S0 clocks the DAC from PLL_D2 at 2 MHz and DMA reads a ring of 4 buffers. A task on core 0 refills each finished buffer with `memcpy`/`memset`; no per-sample CPU work ([dac_stream.cpp](sonar_tx/dac_stream.cpp)) |
 | Fast wave computation | Direct digital synthesis: 64-bit phase accumulator + interpolated sine table. An LFM chirp is two integer adds per sample, with no trig calls ([pulse.cpp](sonar_tx/pulse.cpp)) |
@@ -116,7 +116,7 @@ Lines starting with `#` are log output and `@` are telemetry.
   hard step and the FFT grows side lobes; `WIN hann` ramps the edges and the side lobes drop.
 
 At GPIO25 you see the raw DAC: 0.5 µs steps and images around 1.5 MHz. The analog front end in
-[hardware/](../hardware/) removes them; probe its output for the clean waveform the PS asks for.
+[hardware/](../hardware/) removes them; probe its output for the clean waveform.
 
 ## Checking the firmware against the reference model
 

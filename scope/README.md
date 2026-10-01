@@ -1,7 +1,7 @@
 # sonarscope
 
-Oscilloscope / FFT validation toolkit for the software-defined sonar transmitter
-(PS 26058). It turns scope captures of the transmitter output into measured,
+Oscilloscope / FFT validation toolkit for the software-defined sonar transmitter.
+It turns scope captures of the transmitter output into measured,
 pass/fail evidence: clean envelopes, linear sweeps, suppressed reconstruction
 images, low distortion, low range sidelobes, stable ping timing, and glitch-free
 adaptation when the environment input changes.
@@ -87,7 +87,7 @@ overdriven.
 
 Limits are engineering targets from the reference model with margin for real
 hardware; each criterion also carries a tighter target. THD/SFDR/sine-fit
-methodology follows IEEE Std 1241 and IEEE Std 1057. No NIOT-published chirp
+methodology follows IEEE Std 1241 and IEEE Std 1057. No published chirp
 standard was found, so these limits are the project's own.
 
 | Metric | Limit | Target | Meaning |

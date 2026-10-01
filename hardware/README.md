@@ -1,8 +1,8 @@
 # Analog front end
 
 Reconstruction filter and driver between the ESP32 DAC (GPIO25) and the transducer.
-It turns the DAC's 2 MSPS staircase into a smooth pulse and drives a load, which is the
-"analog signal conditioning" and "DAC and amplifier circuit" part of PS 26058.
+It turns the DAC's 2 MSPS staircase into a smooth pulse and drives a load: the analog
+signal-conditioning stage of the transmitter.
 
 ![Schematic](schematic.svg)
 

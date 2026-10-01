@@ -2,7 +2,7 @@
 
 Thresholds are engineering targets derived from the reference model of the
 transmit chain (8-bit DAC at 2 MSPS, 4th-order 600 kHz reconstruction filter) with
-margin for real hardware. They are not taken from a published NIOT standard; the
+margin for real hardware. They are not taken from a published standard; the
 THD / SFDR / sine-fit methodology follows IEEE Std 1241 and IEEE Std 1057.
 
 Each criterion has a *pass* limit (must meet) and a *target* (should meet).

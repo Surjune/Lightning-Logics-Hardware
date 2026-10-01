@@ -16,6 +16,6 @@ DAC_VREF = 3.3  # V, the DAC is ratiometric to VDD3P3_RTC
 # Nominal speed of sound used for range-resolution figures.
 C_WATER = 1500.0  # m/s
 
-# Transmit band required by the problem statement.
+# Required transmit band.
 BAND_MIN_HZ = 100e3
 BAND_MAX_HZ = 500e3

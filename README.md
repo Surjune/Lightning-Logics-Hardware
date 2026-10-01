@@ -1,9 +1,8 @@
 # Adaptive Sonar Payload
 
-**A low-power, real-time adaptive, software-defined sonar transmitter for Autonomous Underwater Vehicles (AUVs).**
+**A sonar transmitter that re-tunes its ping to the water in real time, built for underwater drones.**
 
-Smart India Hackathon 2026 · Problem Statement **SIH26058** (Ministry of Earth Sciences / NIOT) ·
-Category: Hardware · Theme: Robotics and Drones · Team **Lightning Logics**
+Built by Team **Lightning Logics**.
 
 | 🎥 Demo video | 🧊 3D model design | 💻 Source code |
 |---|---|---|
@@ -27,7 +26,7 @@ low-frequency chirp that cuts through mud, without any manual re-tuning.
 1. [Summary](#1-summary)
 2. [The problem](#2-the-problem)
 3. [The solution at a glance](#3-the-solution-at-a-glance)
-4. [Problem-statement checklist](#4-problem-statement-checklist)
+4. [Requirements checklist](#4-requirements-checklist)
 5. [Evidence: measured on the oscilloscope](#5-evidence-measured-on-the-oscilloscope)
 6. [How it works](#6-how-it-works)
 7. [Platform: STM32 target, ESP32 prototype](#7-platform-stm32-target-esp32-prototype)
@@ -46,7 +45,7 @@ low-frequency chirp that cuts through mud, without any manual re-tuning.
   acoustic "ping" in real time, like a Software-Defined Radio: one piece of hardware, with the
   waveform defined in software.
 * **How:** sensor inputs are read by the ADC. A seawater physics model sets the three wave
-  parameters the problem statement names: **centre frequency / bandwidth, pulse duration and
+  parameters that matter most: **centre frequency / bandwidth, pulse duration and
   amplitude**. The C/C++ firmware synthesises **LFM chirps, geometric sweeps or Barker-13
   phase-coded pulses** and streams them to the DAC with a **hardware timer and DMA**, so the CPU
   never stalls. **Hann / Hamming / Blackman windows** and an **op-amp low-pass filter** give a
@@ -65,14 +64,14 @@ seabed. The best ping depends on the water, and the water changes during a missi
 | **High frequency** (around 500 kHz) | sharp, high-resolution images | absorbed quickly, especially in muddy or deep water |
 | **Low frequency** (around 100 kHz) | travels far through murky water | blurry, low-resolution images |
 
-A conventional transmitter uses **one fixed ping everywhere**. The problem statement asks for a
+A conventional transmitter uses **one fixed ping everywhere**. What an AUV needs is a
 transmitter that adapts its physical analog waveform to depth, turbidity, temperature and
 salinity in real time, built as real hardware with DMA and hardware timers so that it does not
 drain the AUV's battery.
 
 ## 3. The solution at a glance
 
-The design follows the four modules of the problem statement's *Expected Solution*:
+The design has four modules:
 
 ```mermaid
 flowchart TB
@@ -99,7 +98,7 @@ flowchart TB
 
 How the three critical wave parameters are chosen:
 
-| Parameter (problem statement) | What the payload does |
+| Parameter | What the payload does |
 |---|---|
 | **1. Bandwidth / centre frequency** (range vs resolution) | picks the **highest band the water allows** over the required range: 400–500 kHz in clear water, down to 100–140 kHz in mud |
 | **2. Pulse duration** (total energy) | lengthens the pulse (1–5 ms) only when the range needs more energy, and keeps it short enough to limit the blind zone |
@@ -107,17 +106,17 @@ How the three critical wave parameters are chosen:
 
 **Key idea:** the ping follows the water. It's chosen by physics, not by a fixed table.
 
-## 4. Problem-statement checklist
+## 4. Requirements checklist
 
 ✅ done and measured · 🟡 designed, build pending · ⏳ planned
 
-| Problem-statement requirement | How it is met | Evidence | Status |
+| Requirement | How it is met | Evidence | Status |
 |---|---|---|---|
 | Physical hardware on an embedded platform (STM32, ESP32, DSP or FPGA) | ESP32 prototype; STM32 is the target platform | [Section 7](#7-platform-stm32-target-esp32-prototype), bench photo in [section 5](#5-evidence-measured-on-the-oscilloscope) | ✅ prototype |
 | Firmware in C/C++ | 4 modules, about 1,500 lines | [`firmware/sonar_tx/`](firmware/sonar_tx/) | ✅ |
 | Hardware timers + DMA stream the waveform to the DAC without stalling the CPU | I2S clock + DMA ring at 2 MSPS; the CPU only refills a buffer once per ms | [`dac_stream.cpp`](firmware/sonar_tx/dac_stream.cpp); 0 underruns measured | ✅ |
 | LFM chirps, geometric sweeps and phase-coded pulses, on the fly | Direct digital synthesis; switched by the BOOT button or the `MOD` command between pings | [`pulse.cpp`](firmware/sonar_tx/pulse.cpp) | ✅ |
-| Environment input via sensors or potentiometers, read by an ADC | Pots simulate turbidity, range, temperature, salinity and depth ("Entering Muddy Estuary" ↔ "Entering Clear Shallow Reef") | [Pot sweep log](#53-the-dial-sweep-recorded-from-the-board) | ✅ |
+| Environment input via sensors or potentiometers, read by an ADC | Pots simulate turbidity, range, temperature, salinity and depth (for example, muddy estuary ↔ clear shallow reef) | [Pot sweep log](#53-the-dial-sweep-recorded-from-the-board) | ✅ |
 | Modify **bandwidth / centre frequency** instantly | Physics model picks the band; a new pulse is ready within 33 ms | **416.7 kHz ↔ 104.2 kHz** on the scope | ✅ |
 | Modify **pulse duration** (energy) | 1.55 ms (clear, short range) to 5.00 ms (muddy, long range) | [Board log](#53-the-dial-sweep-recorded-from-the-board) | ✅ |
 | Modify **amplitude / signal power** | 0.50 → 1.00 of full scale as the range demands | [Board log](#53-the-dial-sweep-recorded-from-the-board) | ✅ |
@@ -201,7 +200,7 @@ the raw DAC output are the 8-bit DAC's steps; the analog low-pass filter in
 
 ### 6.1 Sense
 
-Potentiometers stand in for sensors, as the problem statement allows. Each gives 0–3.3 V on an
+Potentiometers stand in for sensors. Each gives 0–3.3 V on an
 ADC pin, read every 10 ms and scaled to a physical value:
 
 | Input | Pin (ESP32) | Range | Enabled by default |
@@ -454,5 +453,4 @@ pulse.
 
 ---
 
-**Team Lightning Logics** · Smart India Hackathon 2026 · Problem Statement SIH26058 ·
-[lightninglogics.me](https://www.lightninglogics.me/)
+**Team Lightning Logics** · [lightninglogics.me](https://www.lightninglogics.me/)
