@@ -6,7 +6,7 @@ Built by Team **Lightning Logics**.
 
 | 🎥 Demo video | 🧊 3D model design | 💻 Source code |
 |---|---|---|
-| [youtu.be/wdHIg8nZBoI](https://youtu.be/wdHIg8nZBoI) | [lightninglogics.me](https://www.lightninglogics.me/) | [Surjune/Lightning-Logics-Hardware](https://github.com/Surjune/Lightning-Logics-Hardware) |
+| [youtu.be/wdHIg8nZBoI](https://youtu.be/wdHIg8nZBoI) | [lightninglogics.me](https://auv.lightninglogics.me/) | [Surjune/Lightning-Logics-Hardware](https://github.com/Surjune/Lightning-Logics-Hardware) |
 
 ### The result in one picture
 
